@@ -1,0 +1,8 @@
+{
+  "name": "ui-design-skills",
+  "description": "提供三种前端设计风格：仪表盘布局、柔和界面、新拟物派",
+  "version": "1.0.0",
+  "author": {
+    "name": "langchain-chat-uniapp"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "langchain-chat-sse-demo",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently --kill-others --names frontend,backend --prefix-colors cyan,magenta \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\"",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "less": "^4.9.1",
+    "tailwindcss": "^4.3.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}

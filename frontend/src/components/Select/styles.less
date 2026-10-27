@@ -1,0 +1,72 @@
+.ui-select-root {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  width: 100%;
+  vertical-align: middle;
+  color: #4b556b;
+
+  .ui-select-control {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    height: 42px;
+    margin: 0;
+    padding: 0 36px 0 13px;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid rgba(129, 143, 194, .14);
+    border-radius: 11px;
+    outline: 0;
+    color: inherit;
+    background: rgba(255, 255, 255, .88);
+    box-shadow: 0 3px 10px rgba(63, 75, 111, .045), inset 0 1px 0 rgba(255,255,255,.85);
+    font: 11px 'Space Grotesk', 'PingFang SC', sans-serif;
+    line-height: normal;
+    text-overflow: ellipsis;
+    transition: border-color .16s ease, background .16s ease, box-shadow .16s ease;
+    cursor: pointer;
+  }
+
+  .ui-select-control:hover:not(:disabled) {
+    border-color: rgba(119, 117, 220, .3);
+    background: #fff;
+  }
+
+  .ui-select-control:focus-visible {
+    border-color: rgba(119, 117, 220, .55);
+    box-shadow: 0 0 0 3px rgba(119, 117, 220, .12), 0 5px 14px rgba(68, 81, 118, .07);
+  }
+
+  .ui-select-control:disabled {
+    opacity: .55;
+    cursor: not-allowed;
+  }
+
+  .ui-select-chevron {
+    position: absolute;
+    top: 50%;
+    right: 12px;
+    color: #888eaa;
+    pointer-events: none;
+    transform: translateY(-50%);
+  }
+
+  option {
+    color: #414a5d;
+    background: #fff;
+  }
+}
+
+.ui-select-compact .ui-select-control {
+  height: 39px;
+  padding-left: 11px;
+  border-radius: 10px;
+  font-size: 10px;
+}
+
+.ui-select-compact .ui-select-chevron {
+  right: 10px;
+  width: 14px;
+  height: 14px;
+}

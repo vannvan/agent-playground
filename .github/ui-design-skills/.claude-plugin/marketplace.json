@@ -1,0 +1,22 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "ui-design-skills-local",
+  "description": "本地 UI 设计技能市场",
+  "owner": {
+    "name": "langchain-chat-uniapp"
+  },
+  "plugins": [
+    {
+      "name": "ui-design-skills",
+      "description": "提供三种前端设计风格：仪表盘布局、柔和界面、新拟物派",
+      "author": {
+        "name": "langchain-chat-uniapp"
+      },
+      "version": "1.0.0",
+      "source": {
+        "source": "directory",
+        "path": "."
+      }
+    }
+  ]
+}
