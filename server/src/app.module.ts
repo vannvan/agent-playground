@@ -7,9 +7,18 @@ import { WorkspaceController } from './workspace.controller';
 import { CoreModule } from './core.module';
 import { RewriteModule } from './rewrite/rewrite.module';
 import { RagModule } from './rag/rag.module';
+import { AiEngineModule } from './ai-engine/ai-engine.module';
+import { SkillsModule } from './skills/skills.module';
+import { KnowledgeBaseSkill } from './skills/knowledge-base/knowledge-base.skill';
 
 @Module({
-  imports: [CoreModule, RewriteModule, RagModule],
+  imports: [
+    CoreModule,
+    RewriteModule,
+    RagModule,
+    AiEngineModule,
+    SkillsModule.register(KnowledgeBaseSkill),
+  ],
   controllers: [AppController, AdminController, AdminAuthController, AuthController, WorkspaceController],
   providers: [],
 })

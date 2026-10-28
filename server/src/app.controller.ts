@@ -3,6 +3,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Inject,
   NotFoundException,
   Post,
   Req,
@@ -16,6 +17,8 @@ import type { AuthenticatedRequest } from './auth/auth.guard';
 import { SessionAuthGuard } from './auth/auth.guard';
 import { DatabaseService } from './database.service';
 import { ModelConfigService } from './model-config.service';
+import { SkillRouterService } from './skills/skill-router.service';
+import { SKILL_REGISTRY, SkillRegistry } from './skills/skill-registry';
 
 export const SUPPORTED_IMAGE_SIZES = [
   '512x512',
@@ -38,12 +41,15 @@ export function validateImageSize(size?: string) {
 @Controller()
 export class AppController {
   private readonly modelConfig: ModelConfigService;
+  private readonly skillRegistry: SkillRegistry;
 
   constructor(
     private readonly database: DatabaseService = new DatabaseService(),
     modelConfig?: ModelConfigService,
+    @Inject(SKILL_REGISTRY) skillRegistry?: SkillRegistry,
   ) {
     this.modelConfig = modelConfig ?? new ModelConfigService(this.database);
+    this.skillRegistry = skillRegistry ?? new SkillRegistry();
   }
 
   @UseGuards(SessionAuthGuard)
@@ -86,7 +92,7 @@ export class AppController {
       }
 
       const image = payload.data?.[0];
-      const url = image?.url || (image?.b64_json ? `data:image/png;base64,${image.b64_json}` : undefined);
+      const url = image?.url || (image?.b64_json ? `[image omitted]${image.b64_json}` : undefined);
       if (!url) {
         throw new BadGatewayException('图像服务未返回图片，请确认模型支持图片生成');
       }
@@ -124,21 +130,33 @@ export class AppController {
     @Body() body: {
       message?: string;
       chatId?: string;
+      skillId?: string;
     },
     @Res() response: Response,
     @Req() request: AuthenticatedRequest,
   ) {
-    const message = body.message?.trim();
-    if (!message) throw new BadRequestException('请输入问题');
-
+    const rawMessage = body.message?.trim();
+    if (!rawMessage) throw new BadRequestException('请输入问题');
     if (!body.chatId) throw new BadRequestException('缺少会话 ID');
+
     const user = request.user;
     const chat = await this.database.getUserChat(user.id, body.chatId);
     if (!chat) throw new NotFoundException('会话不存在');
+
     const history = chat.messages as Array<{ role: 'user' | 'assistant'; content: string }>;
     const privateConfig = await this.modelConfig.getPrivateConfig(user.id);
     const sessionId = body.chatId;
 
+    // ── 检测技能前缀 @技能名，剥离后交给对应技能处理 ──
+    const skillMatch = rawMessage.match(/^@([^\s]+)\s*(.*)$/s);
+    let skillId: string | null = null;
+    let userMessage = rawMessage;
+    if (skillMatch) {
+      skillId = skillMatch[1]; // e.g. "knowledge-base"
+      userMessage = skillMatch[2].trim();
+    }
+
+    // 打开 SSE 响应头
     response.setHeader('Content-Type', 'text/event-stream');
     response.setHeader('Cache-Control', 'no-cache');
     response.setHeader('Connection', 'keep-alive');
@@ -146,29 +164,46 @@ export class AppController {
 
     const requestId = randomUUID();
     const startedAt = Date.now();
-    const { textModel } = privateConfig;
 
     let answer = '';
-    try {
-      const chunks = await this.streamFromModel(message, privateConfig, history);
-      for await (const chunk of chunks) {
+    const finishStream = async (
+      reader: AsyncIterable<string>,
+      skillIdForDb: string | null,
+    ) => {
+      for await (const chunk of reader) {
         response.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
         answer += chunk;
       }
-      await this.database.appendUserChatExchange(user.id, sessionId, message, answer, textModel);
+      await this.database.appendUserChatExchange(
+        user.id, sessionId, rawMessage, answer,
+        skillIdForDb ?? privateConfig.textModel,
+      );
       await this.database.recordUserGenerationRequest(
         requestId, user.id, 'chat', Date.now() - startedAt, 'success',
       );
       response.write('event: done\ndata: {}\n\n');
+    };
+
+    try {
+      // 优先走技能路由；未指定或未注册则走普通 LLM
+      if (skillId) {
+        const skill = this.skillRegistry.get(skillId);
+        if (skill) {
+          await finishStream(skill.stream(userMessage, history, user.id), skill.id);
+          return response.end();
+        }
+      }
+
+      // 默认：直接调 LLM
+      const chunks = await this.streamFromModel(userMessage, privateConfig, history);
+      await finishStream(chunks, null);
+      response.end();
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : '模型请求失败';
       await this.database.recordUserGenerationRequest(
         requestId, user.id, 'chat', Date.now() - startedAt, 'error', errorMessage,
       );
-      response.write(
-        `event: error\ndata: ${JSON.stringify({ message: errorMessage })}\n\n`,
-      );
-    } finally {
+      response.write(`event: error\ndata: ${JSON.stringify({ message: errorMessage })}\n\n`);
       response.end();
     }
   }
@@ -201,5 +236,4 @@ export class AppController {
       }
     })();
   }
-
 }

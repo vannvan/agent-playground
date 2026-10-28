@@ -27,12 +27,13 @@ import {
   UserRound,
   WandSparkles,
   X,
+  BookOpen,
 } from 'lucide-react'
 import 'streamdown/styles.css'
 import './App.less'
 import { RewriteWorkspace } from './features/RewriteWorkspace'
 import Select from './components/Select'
-import { authApi, chatsApi, imagesApi, modelConfigApi, announcementsApi, rewritesApi, sendChatMessage } from './api/front'
+import { authApi, chatsApi, imagesApi, modelConfigApi, announcementsApi, rewritesApi, sendChatMessage, sendKbChatMessage } from './api/front'
 
 const Streamdown = lazy(() => import('streamdown').then(({ Streamdown: Component }) => ({ default: Component })))
 
@@ -57,6 +58,7 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
   const [error, setError] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
@@ -309,7 +311,9 @@ function App() {
       const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: prompt }
       const assistantMessage: ChatMessage = { id: `assistant-${Date.now()}`, role: 'assistant', content: '' }
       setChatMessages((current) => [...current, userMessage, assistantMessage])
-      const reader = await sendChatMessage(prompt, chatId)
+      const reader = useKnowledgeBase
+        ? await sendKbChatMessage(prompt, chatId)
+        : await sendChatMessage(prompt, chatId)
       const decoder = new TextDecoder()
       let buffer = ''
       while (true) {
@@ -618,6 +622,17 @@ function App() {
           </div>
           <div className="composer-foot">
             <span>Enter 发送 · Shift + Enter 换行</span>
+            <button
+              type="button"
+              className={`kb-toggle${useKnowledgeBase ? ' active' : ''}`}
+              onClick={() => setUseKnowledgeBase((v) => !v)}
+              disabled={isStreaming}
+              title={useKnowledgeBase ? '关闭知识库检索' : '启用知识库检索（基于已入库文档回答）'}
+              aria-pressed={useKnowledgeBase}
+            >
+              <BookOpen size={13} />
+              <span>知识库</span>
+            </button>
             {isStreaming ? (
               <span className="generating">
                 <span className="status-dot" />
@@ -625,7 +640,7 @@ function App() {
               </span>
             ) : (
               <span>
-                Powered by <b>LangChain</b>
+                {useKnowledgeBase ? 'Powered by <b>LangChain Agent</b>' : 'Powered by <b>LangChain</b>'}
               </span>
             )}
           </div>

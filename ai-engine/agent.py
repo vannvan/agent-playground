@@ -141,11 +141,7 @@ def _make_config() -> dict:
 
 
 async def run_chat_stream(session_id: str, user_message: str) -> AsyncIterator[dict]:
-    """流式对话入口，yield SSE 事件 dict。
-
-    使用 graph.astream(stream_mode="updates") 逐节点获取增量状态，
-    从 AIMessage 中提取文本和工具调用事件。
-    """
+    """流式对话入口，yield SSE 事件 dict。"""
     start_ts = time.time()
     graph = get_graph()
 
@@ -153,28 +149,39 @@ async def run_chat_stream(session_id: str, user_message: str) -> AsyncIterator[d
     state = AgentState(session_id=session_id, messages=msgs)
     config = _make_config()
 
+    all_sources = []
+    all_texts = []
+    prev_tool_call_ids = set()
+    
     try:
-        async for chunk in graph.astream(state, config=config, stream_mode="updates"):
-            # chunk 形如 {"chat": {"messages": [AIMessage(...)]}}
-            for node_output in chunk.values():
-                if not isinstance(node_output, dict):
-                    continue
-                new_msgs = node_output.get("messages", [])
-                for msg in new_msgs:
-                    if isinstance(msg, AIMessage):
-                        # 工具调用事件
-                        tool_calls = getattr(msg, "tool_calls", []) or []
-                        for tc in tool_calls:
+        async for chunk in graph.astream(state, config=config, stream_mode="values"):
+            messages = chunk.get("messages", [])
+            
+            # 聚合 sources
+            if "sources" in chunk and chunk["sources"]:
+                all_sources = chunk["sources"]
+            
+            for msg in messages:
+                if isinstance(msg, AIMessage):
+                    # 工具调用事件（去重）
+                    tool_calls = getattr(msg, "tool_calls", []) or []
+                    for tc in tool_calls:
+                        tc_id = tc.get("id")
+                        if tc_id and tc_id not in prev_tool_call_ids:
+                            prev_tool_call_ids.add(tc_id)
                             yield {"type": "tool", "name": tc["name"],
                                    "args": json.dumps(tc["args"], ensure_ascii=False)}
-                        # 文本内容事件
-                        if msg.content:
-                            yield {"type": "text", "content": msg.content}
+                    
+                    # 文本内容事件
+                    if msg.content:
+                        all_texts.append(msg.content)
 
-            # 来源信息（工具调用后由 tool_node 写入）
-            if "sources" in chunk and chunk["sources"]:
-                yield {"type": "sources", "sources": chunk["sources"]}
-
+        # 发送最终回复
+        if all_texts:
+            yield {"type": "text", "content": "".join(all_texts)}
+        
+        # 发送 sources
+        yield {"type": "sources", "sources": all_sources}
         yield {"type": "done", "session_id": session_id}
 
     except Exception as e:
@@ -189,11 +196,7 @@ async def run_chat_stream(session_id: str, user_message: str) -> AsyncIterator[d
 
 
 async def run_chat_sync_async(session_id: str, user_message: str) -> dict[str, Any]:
-    """非流式对话（调试用）—— 异步版本。
-
-    只收集最后一条无 tool_calls 的 AIMessage 的 content 作为回复，
-    跳过中间工具调用的格式化输出文本。
-    """
+    """非流式对话（调试用）—— 异步版本。"""
     sources_list: list[dict] = []
     final_reply = ""
 
@@ -202,9 +205,8 @@ async def run_chat_sync_async(session_id: str, user_message: str) -> dict[str, A
 
     async for ev in run_chat_stream(session_id, user_message):
         if ev["type"] == "sources":
-            sources_list.extend(ev["sources"])
+            sources_list = ev.get("sources", [])
         elif ev["type"] == "text" and ev.get("content"):
-            # 保留最后一段非空的文本作为最终回复
             final_reply = ev["content"]
 
     final_reply = final_reply.strip()

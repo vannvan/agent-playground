@@ -4722,3 +4722,26 @@
     transform: none;
   }
 }
+
+/* 知识库切换按钮 */
+.kb-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid rgba(129, 143, 194, 0.35);
+  border-radius: 6px;
+  background: transparent;
+  color: #9ba2ba;
+  font: 11px/1 monospace;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  &:hover { border-color: rgba(129, 143, 194, 0.6); color: #b8c2f0; }
+  &:disabled { opacity: 0.4; cursor: not-allowed; }
+  &.active {
+    border-color: #7487db;
+    color: #7487db;
+    background: rgba(116, 135, 219, 0.08);
+    &:hover { background: rgba(116, 135, 219, 0.14); }
+  }
+}

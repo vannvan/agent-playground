@@ -59,9 +59,15 @@ export const chatsApi = {
   open:   (id: string) => unwrap(client.get<{ messages: ChatMessage[]; chatId: string }>(`/chats/${id}`)),
 }
 
-// ── Chat streaming ───────────────────────────────────────────────────────────
-export async function sendChatMessage(prompt: string, chatId: string) {
-  const res: AxiosResponse<ReadableStream> = await client.post('/chat', { message: prompt, chatId }, { responseType: 'stream' })
+// ── Chat streaming（普通 LLM 对话，可选 skillId）────────────────────────────
+export async function sendChatMessage(prompt: string, chatId: string, skillId?: string) {
+  const res: AxiosResponse<ReadableStream> = await client.post('/chat', { message: prompt, chatId, skillId }, { responseType: 'stream' })
+  return res.data.getReader()
+}
+
+// ── KB Chat streaming（知识库 Agent 对话）─────────────────────────────────────
+export async function sendKbChatMessage(prompt: string, chatId: string): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const res: AxiosResponse<ReadableStream> = await client.post('/ai-engine/chat/stream', { message: prompt, chatId }, { responseType: 'stream' })
   return res.data.getReader()
 }
 
