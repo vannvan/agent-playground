@@ -33,3 +33,7 @@ dist-ssr
 .rewrite-skill
 .claude
 knowledgeBase
+backend
+data
+vector_db
+ingest_manifest.json

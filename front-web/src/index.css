@@ -1,0 +1,7 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
+@import "tailwindcss";
+@source "../node_modules/streamdown/dist/*.js";
+:root { font-family: 'Space Grotesk', 'PingFang SC', sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+* { box-sizing: border-box; }
+body { margin: 0; min-width: 320px; min-height: 100vh; background: #f8fafc; }
+button, textarea { font-family: inherit; }

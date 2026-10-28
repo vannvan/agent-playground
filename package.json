@@ -1,16 +1,28 @@
 {
-  "name": "langchain-chat-sse-demo",
+  "name": "langchain-playground",
   "private": true,
+  "workspaces": [
+    "admin-web",
+    "front-web",
+    "server"
+  ],
   "scripts": {
-    "dev": "concurrently --kill-others --names frontend,backend --prefix-colors cyan,magenta \"npm run dev --prefix frontend\" \"npm run start:dev --prefix backend\"",
-    "build": "npm run build --prefix frontend && npm run build --prefix backend"
-  },
-  "dependencies": {
-    "@tailwindcss/vite": "^4.3.3",
-    "less": "^4.9.1",
-    "tailwindcss": "^4.3.3"
+    "dev:front": "npm run dev --workspace=front-web",
+    "dev:admin": "npm run dev --workspace=admin-web",
+    "dev:server": "npm run start:dev --workspace=server",
+    "dev": "npx concurrently --kill-others --names front,admin,server --prefix-colors cyan,magenta,yellow \"npm run dev:front\" \"npm run dev:admin\" \"npm run dev:server\"",
+    "build": "npm run build --workspaces --if-present",
+    "build:front": "npm run build --workspace=front-web",
+    "build:admin": "npm run build --workspace=admin-web",
+    "build:server": "npm run build --workspace=server",
+    "lint": "npm run lint --workspaces --if-present",
+    "lint:front": "npm run lint --workspace=front-web",
+    "lint:admin": "npm run lint --workspace=admin-web",
+    "lint:server": "npm run lint --workspace=server",
+    "test": "npm run test --workspace=server"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "lerna": "^8.2.2"
   }
 }
