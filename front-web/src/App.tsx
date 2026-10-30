@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
@@ -6,7 +6,6 @@ import {
   ArrowUp,
   AlertTriangle,
   Bell,
-  Bot,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
@@ -24,22 +23,49 @@ import {
   Plus,
   Settings2,
   Sparkles,
-  UserRound,
   WandSparkles,
   X,
   BookOpen,
+  Zap,
+  Palette,
+  PenTool,
 } from 'lucide-react'
 import 'streamdown/styles.css'
 import './App.less'
 import { RewriteWorkspace } from './features/RewriteWorkspace'
 import Select from './components/Select'
-import { authApi, chatsApi, imagesApi, modelConfigApi, announcementsApi, rewritesApi, sendChatMessage, sendKbChatMessage } from './api/front'
+import { authApi, chatsApi, imagesApi, modelConfigApi, announcementsApi, rewritesApi, sendChatMessage, CONVERSATION_MODE } from './api/front'
 
 const Streamdown = lazy(() => import('streamdown').then(({ Streamdown: Component }) => ({ default: Component })))
 
 type ModelConfig = { apiKey: string; baseUrl: string; textModel: string; imageModel: string; videoModel: string; hasApiKey: boolean; maskedApiKey?: string }
 type WorkspaceMode = 'chat' | 'image' | 'rewrite'
 type GeneratedImage = { id: string; url: string; prompt: string }
+type SkillDef = { id: string; displayName: string; disabled: boolean; icon: React.ReactNode }
+type SkillGroup = { name: string; skills: SkillDef[] }
+
+const SKILL_GROUPS: SkillGroup[] = [
+  {
+    name: '文档技能',
+    skills: [
+      { id: 'knowledge-base', displayName: '知识库问答', disabled: false, icon: <BookOpen size={14} /> },
+      { id: 'doc-interpret', displayName: '文档解读', disabled: true, icon: <Zap size={14} /> },
+    ],
+  },
+  {
+    name: '图片技能',
+    skills: [
+      { id: 'image-gen', displayName: '生图', disabled: true, icon: <Palette size={14} /> },
+    ],
+  },
+  {
+    name: '自媒体',
+    skills: [
+      { id: 'copy-gen', displayName: '文案生成', disabled: true, icon: <PenTool size={14} /> },
+      { id: 'topic-gen', displayName: '内容选题', disabled: true, icon: <PenTool size={14} /> },
+    ],
+  },
+]
 type User = { id: number; email: string }
 type ChatSession = { chatId: string; title: string }
 type ChatMessage = { id: string | number; role: 'user' | 'assistant'; content: string }
@@ -59,6 +85,8 @@ function App() {
   const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
+  const [selectedSkill, setSelectedSkill] = useState<{ id: string; displayName: string } | null>(null)
+  const [skillPanelOpen, setSkillPanelOpen] = useState(false)
   const [error, setError] = useState('')
   const [user, setUser] = useState<User | null>(null)
   const [isAuthLoading, setIsAuthLoading] = useState(true)
@@ -86,6 +114,14 @@ function App() {
   const [previewIndex, setPreviewIndex] = useState<number | null>(null)
   const [isGeneratingImage, setIsGeneratingImage] = useState(false)
   const [imageError, setImageError] = useState('')
+  const convRef = useRef<HTMLDivElement>(null)
+
+  // Auto-scroll to bottom on message change or mode switch
+  useEffect(() => {
+    const el = convRef.current
+    if (!el) return
+    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+  }, [chatMessages, mode])
 
   useEffect(() => {
     let active = true
@@ -202,6 +238,26 @@ function App() {
     setError('')
   }
 
+  // ── Skill helper: close panel on outside click ────────────────────────────
+  const skillPanelRef = useCallback((el: HTMLDivElement | null) => {
+    if (!el) return
+    const handler = (e: MouseEvent) => {
+      if (!el.contains(e.target as Node)) setSkillPanelOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function selectSkill(skill: SkillDef) {
+    if (skill.disabled) return
+    setSelectedSkill((prev) => prev?.id === skill.id ? null : { id: skill.id, displayName: skill.displayName })
+    setSkillPanelOpen(false)
+    setTimeout(() => {
+      const ta = document.querySelector('textarea[placeholder="输入你的问题..."]') as HTMLTextAreaElement | null
+      ta?.focus()
+    }, 50)
+  }
+
   const openRewrite = useCallback(async (rewriteId: string) => {
     const result = await rewritesApi.open(rewriteId)
     return result
@@ -311,9 +367,10 @@ function App() {
       const userMessage: ChatMessage = { id: `user-${Date.now()}`, role: 'user', content: prompt }
       const assistantMessage: ChatMessage = { id: `assistant-${Date.now()}`, role: 'assistant', content: '' }
       setChatMessages((current) => [...current, userMessage, assistantMessage])
-      const reader = useKnowledgeBase
-        ? await sendKbChatMessage(prompt, chatId)
-        : await sendChatMessage(prompt, chatId)
+      const reader = await sendChatMessage(prompt, chatId, {
+        mode:     selectedSkill ? CONVERSATION_MODE.SKILL : CONVERSATION_MODE.CHAT,
+        skillId:  selectedSkill?.id,
+      })
       const decoder = new TextDecoder()
       let buffer = ''
       while (true) {
@@ -455,11 +512,7 @@ function App() {
             {rewrites.length === 0 && <p className="chat-history-empty">生成的文章会显示在这里</p>}
           </div>
         </section>}
-        <div className="sidebar-promo">
-          <span className="promo-icon"><Sparkles size={15} /></span>
-          <p>把灵感变成<br /><b>下一次创作。</b></p>
-          <span className="promo-orbit" />
-        </div>
+       
         <div className="sidebar-bottom">
           <button className="sidebar-model-settings" type="button" onClick={() => { setDraftConfig({ ...config, apiKey: '' }); setConfigError(''); setIsSettingsOpen(true) }} aria-label="模型配置" title="模型配置">
             <Settings2 size={16} /><span>模型配置</span>
@@ -541,7 +594,7 @@ function App() {
           document.body,
         )}
         {mode === 'chat' ? <>
-        <div className="conversation">
+        <div className="conversation" ref={convRef}>
           {chatMessages.length === 0 && (
             <div className="empty-state">
               <div className="orb">
@@ -562,20 +615,10 @@ function App() {
           )}
           {chatMessages.map((message, index) => message.role === 'user' ? (
               <div className="message user-message" key={message.id}>
-                <div className="avatar user-avatar">
-                  <UserRound size={16} />
-                </div>
-                <div>
-                  <small>YOU</small>
                   <p>{message.content}</p>
-                </div>
               </div>
             ) : <div className="message assistant-message" key={message.id}>
-                <div className="avatar bot-avatar">
-                  <Bot size={16} />
-                </div>
                 <div className="answer">
-                  <small>AI STUDIO / ASSISTANT</small>
                   <Suspense fallback={<p className="assistant-markdown">{message.content}</p>}>
                     <Streamdown className="assistant-markdown" mode="streaming" 
                     // controls={{ code: { copy: false, download: false } }}
@@ -598,10 +641,48 @@ function App() {
         </div>
         <form className="composer" onSubmit={sendMessage}>
           <div className="input-wrap">
+            <div className="skill-input-group" ref={skillPanelRef}>
+              <button
+                type="button"
+                className={`skill-plus-btn${skillPanelOpen ? ' active' : ''}`}
+                onClick={() => setSkillPanelOpen((v) => !v)}
+                disabled={isStreaming}
+                aria-label="选择技能"
+                title="选择技能"
+              >
+                <Plus size={18} />
+              </button>
+              {skillPanelOpen && (
+                <div className="skill-panel">
+                  {SKILL_GROUPS.map((group) => (
+                    <div className="skill-group" key={group.name}>
+                      <div className="skill-group-label">{group.name}</div>
+                      <div style={{width:'100%'}}>
+                        {group.skills.map((skill) => (
+                          <button
+                            key={skill.id}
+                            type="button"
+                            style={{display:"flex",width:'100%',marginBottom:2}}
+                            className={`skill-item${skill.disabled ? ' disabled' : ''}${selectedSkill?.id === skill.id ? ' selected' : ''}`}
+                            onClick={() => selectSkill(skill)}
+                            disabled={skill.disabled}
+                            title={skill.disabled ? '暂未开放' : skill.displayName}
+                          >
+                            <span className="skill-item-icon">{skill.icon}</span>
+                            <span className="skill-item-name">{skill.displayName}</span>
+                            {skill.disabled && <span className="skill-item-lock">🔒</span>}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
             <textarea
               value={input}
               onChange={(event) => setInput(event.target.value)}
-              placeholder="输入你的问题..."
+              placeholder={selectedSkill ? `向「${selectedSkill.displayName}」提问…` : '输入你的问题...'}
               rows={1}
               onKeyDown={(event) => {
                 const isComposing = event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229
@@ -611,6 +692,15 @@ function App() {
                 }
               }}
             />
+            {selectedSkill && (
+              <span className="skill-chip">
+                <BookOpen size={11} />
+                <span>{selectedSkill.displayName}</span>
+                <button type="button" className="skill-chip-remove" onClick={() => setSelectedSkill(null)} aria-label="取消技能">
+                  <X size={10} />
+                </button>
+              </span>
+            )}
             <span className="shortcut">⌘ ↵</span>
             <button
               aria-label={isStreaming ? '正在生成' : '发送'}
@@ -622,27 +712,6 @@ function App() {
           </div>
           <div className="composer-foot">
             <span>Enter 发送 · Shift + Enter 换行</span>
-            <button
-              type="button"
-              className={`kb-toggle${useKnowledgeBase ? ' active' : ''}`}
-              onClick={() => setUseKnowledgeBase((v) => !v)}
-              disabled={isStreaming}
-              title={useKnowledgeBase ? '关闭知识库检索' : '启用知识库检索（基于已入库文档回答）'}
-              aria-pressed={useKnowledgeBase}
-            >
-              <BookOpen size={13} />
-              <span>知识库</span>
-            </button>
-            {isStreaming ? (
-              <span className="generating">
-                <span className="status-dot" />
-                GENERATING <CircleStop size={13} />
-              </span>
-            ) : (
-              <span>
-                {useKnowledgeBase ? 'Powered by <b>LangChain Agent</b>' : 'Powered by <b>LangChain</b>'}
-              </span>
-            )}
           </div>
         </form>
         </> : mode === 'image' ? <div className="image-workspace">

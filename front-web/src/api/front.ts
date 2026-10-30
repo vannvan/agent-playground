@@ -2,6 +2,22 @@ import client, { unwrap } from './client'
 import type { AxiosResponse } from 'axios'
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+/** 统一会话模式：普通聊天 / 技能驱动 */
+export const CONVERSATION_MODE = {
+  CHAT:  'chat',
+  SKILL: 'skill',
+} as const
+export type ConversationMode = typeof CONVERSATION_MODE[keyof typeof CONVERSATION_MODE]
+
+/** 前端 → 后端的聊天请求体 */
+export interface ChatRequest {
+  message: string
+  chatId?: string
+  mode: ConversationMode
+  /** 仅 mode='skill' 时有效，如 'knowledge-base' */
+  skillId?: string
+}
 export interface User { id: number; email: string }
 export interface ModelConfig {
   apiKey: string; baseUrl: string; textModel: string
@@ -54,15 +70,35 @@ export const authApi = {
 
 // ── Chats ────────────────────────────────────────────────────────────────────
 export const chatsApi = {
-  list:   () => unwrap(client.get<ChatSession[]>('/chats')),
-  create: () => unwrap(client.post<ChatSession>('/chats')),
-  open:   (id: string) => unwrap(client.get<{ messages: ChatMessage[]; chatId: string }>(`/chats/${id}`)),
+  list:     () => unwrap(client.get<ChatSession[]>('/chats')),
+  create:   () => unwrap(client.post<ChatSession>('/chats')),
+  open:     (id: string) => unwrap(client.get<{ messages: ChatMessage[]; chatId: string }>(`/chats/${id}`)),
+  delete:   (id: string) => client.delete(`/chats/${encodeURIComponent(id)}`),
 }
 
-// ── Chat streaming（普通 LLM 对话，可选 skillId）────────────────────────────
-export async function sendChatMessage(prompt: string, chatId: string, skillId?: string) {
-  const res: AxiosResponse<ReadableStream> = await client.post('/chat', { message: prompt, chatId, skillId }, { responseType: 'stream' })
-  return res.data.getReader()
+// ── Chat streaming（统一会话协议）──────────────────────────────────────────
+// mode='chat'  → 普通 LLM 直连
+// mode='skill'  → 路由到对应技能管线
+// 使用原生 fetch 而非 axios，确保拿到真正的 ReadableStream
+export async function sendChatMessage(
+  prompt: string,
+  chatId: string,
+  opts?: { mode?: ConversationMode; skillId?: string },
+): Promise<ReadableStreamDefaultReader<Uint8Array>> {
+  const mode     = opts?.mode     ?? CONVERSATION_MODE.CHAT
+  const skillId  = opts?.skillId
+  const res = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api'}/chat`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: prompt, chatId, mode, skillId }),
+  })
+  if (!res.ok) {
+    const text = await res.text().catch(() => '')
+    throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`)
+  }
+  if (!res.body) throw new Error('响应体为空')
+  return res.body.getReader()
 }
 
 // ── KB Chat streaming（知识库 Agent 对话）─────────────────────────────────────

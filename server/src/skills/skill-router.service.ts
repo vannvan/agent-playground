@@ -1,5 +1,5 @@
-import { Injectable, NotFoundException, Logger } from '@nestjs/common';
-import { SkillRegistry, SKILL_REGISTRY } from './skill-registry';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { SKILL_REGISTRY, SkillRegistry } from './skill-registry';
 import type { SkillBase } from './skill-base';
 
 /**

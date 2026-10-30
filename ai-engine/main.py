@@ -17,6 +17,7 @@ from schemas import (
     SyncChatResp, IngestResp, SessionResp,
 )
 from agent import run_chat_stream
+from agent import run_plain_chat_stream
 from tools import get_tool_names, TOOLS
 from retriever import collection_count
 from memory import create_session, get_session_history
@@ -58,6 +59,7 @@ async def root():
             "GET  /health",
             "GET  /tools",
             "POST /chat/stream",
+            "POST /chat/plain/stream",
             "POST /chat/sync",
             "POST /ingest",
             "GET  /sessions/{id}",
@@ -98,6 +100,26 @@ async def event_stream(session_id: str, message: str):
     """SSE 生成器，逐事件 yield。"""
     async for ev in run_chat_stream(session_id, message):
         yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+
+
+async def plain_event_stream(session_id: str, message: str):
+    """纯聊天 SSE 生成器（无工具）。"""
+    async for ev in run_plain_chat_stream(session_id, message):
+        yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+
+
+@app.post("/chat/plain/stream", tags=["chat"])
+async def chat_plain_stream(req: ChatReq):
+    """纯 LLM 流式对话，不走 Agent graph，不调用工具。"""
+    session_id = req.session_id or create_session()
+    return StreamingResponse(
+        plain_event_stream(session_id, req.message),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.post("/chat/sync", response_model=SyncChatResp, tags=["chat"])

@@ -44,6 +44,7 @@ export type ChatMessageRecord = {
   role: 'user' | 'assistant';
   content: string;
   model: string | null;
+  mode: string | null;
   created_at: Date;
 };
 
@@ -251,6 +252,10 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     if (generationColumns[0] && !String(generationColumns[0].COLUMN_TYPE).includes('rewrite')) {
       await this.pool.query("ALTER TABLE user_generation_requests MODIFY content_type ENUM('chat', 'image', 'rewrite') NOT NULL");
     }
+    // 会话模式与技能标识（统一会话协议）— 无条件执行
+    try { await this.pool.query("ALTER TABLE user_chat_sessions ADD COLUMN mode VARCHAR(20) NULL AFTER title"); } catch {}
+    try { await this.pool.query("ALTER TABLE user_chat_sessions ADD COLUMN skill_id VARCHAR(100) NULL AFTER mode"); } catch {}
+    try { await this.pool.query("ALTER TABLE user_chat_messages ADD COLUMN mode VARCHAR(20) NULL AFTER model"); } catch {}
   }
 
   async onModuleDestroy() {
@@ -420,6 +425,16 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     return { chatId, title: '新对话' };
   }
 
+  async deleteUserChat(userId: number, chatId: string) {
+    const pool = this.requirePool();
+    const [owned] = await pool.query<RowDataPacket[]>(
+      'SELECT chat_id FROM user_chat_sessions WHERE chat_id = ? AND user_id = ?',
+      [chatId, userId],
+    );
+    if (!owned[0]) throw new Error('会话不存在');
+    await pool.query('DELETE FROM user_chat_sessions WHERE chat_id = ? AND user_id = ?', [chatId, userId]);
+  }
+
   async listUserChats(userId: number) {
     const pool = this.requirePool();
     const [rows] = await pool.query<RowDataPacket[]>(
@@ -433,20 +448,28 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   async getUserChat(userId: number, chatId: string) {
     const pool = this.requirePool();
     const [chats] = await pool.query<RowDataPacket[]>(
-      `SELECT chat_id AS chatId, title, created_at AS createdAt, updated_at AS updatedAt
+      `SELECT chat_id AS chatId, title, mode, skill_id AS skillId, created_at AS createdAt, updated_at AS updatedAt
        FROM user_chat_sessions WHERE user_id = ? AND chat_id = ? LIMIT 1`,
       [userId, chatId],
     );
     if (!chats[0]) return null;
     const [messages] = await pool.query<RowDataPacket[]>(
-      `SELECT id, role, content, model, created_at AS createdAt
+      `SELECT id, role, content, model, mode, created_at AS createdAt
        FROM user_chat_messages WHERE chat_id = ? ORDER BY id ASC`,
       [chatId],
     );
     return { chat: chats[0], messages };
   }
 
-  async appendUserChatExchange(userId: number, chatId: string, prompt: string, answer: string, model: string) {
+  async appendUserChatExchange(
+    userId: number,
+    chatId: string,
+    prompt: string,
+    answer: string,
+    model: string,
+    mode: string | null = null,
+    skillId: string | null = null,
+  ) {
     const pool = this.requirePool();
     const connection = await pool.getConnection();
     try {
@@ -457,13 +480,17 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
       );
       if (!owned[0]) throw new Error('会话不存在');
       await connection.query(
-        'INSERT INTO user_chat_messages (chat_id, role, content, model) VALUES (?, ?, ?, ?), (?, ?, ?, ?)',
-        [chatId, 'user', prompt, model, chatId, 'assistant', answer, model],
+        'INSERT INTO user_chat_messages (chat_id, role, content, model, mode) VALUES (?, ?, ?, ?, ?), (?, ?, ?, ?, ?)',
+        [chatId, 'user', prompt, model, mode, chatId, 'assistant', answer, model, mode],
       );
       await connection.query(
-        `UPDATE user_chat_sessions SET title = IF(title = '新对话', ?, title), updated_at = CURRENT_TIMESTAMP(3)
+        `UPDATE user_chat_sessions
+         SET title        = IF(title = '新对话', ?, title),
+             mode         = COALESCE(mode, ?),
+             skill_id     = COALESCE(skill_id, ?),
+             updated_at   = CURRENT_TIMESTAMP(3)
          WHERE chat_id = ? AND user_id = ?`,
-        [prompt.slice(0, 240), chatId, userId],
+        [prompt.slice(0, 240), mode, skillId, chatId, userId],
       );
       await connection.commit();
     } catch (error) {

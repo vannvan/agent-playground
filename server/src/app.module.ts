@@ -17,7 +17,7 @@ import { KnowledgeBaseSkill } from './skills/knowledge-base/knowledge-base.skill
     RewriteModule,
     RagModule,
     AiEngineModule,
-    SkillsModule.register(KnowledgeBaseSkill),
+    SkillsModule.register([KnowledgeBaseSkill]),
   ],
   controllers: [AppController, AdminController, AdminAuthController, AuthController, WorkspaceController],
   providers: [],

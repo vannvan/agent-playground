@@ -111,4 +111,70 @@ export class AiEngineService {
     }
     return res.json();
   }
+
+  /** 普通聊天流式：转发 ai-engine /chat/plain/stream SSE，yield 解析后的事件 */
+  async *streamPlainChat(
+    chatId: string,
+    message: string,
+  ): AsyncGenerator<AiEngineSseEvent, void, unknown> {
+    const url = `${AI_ENGINE_URL.replace(/\/+$/, '')}/chat/plain/stream`;
+    this.logger.log(`普通聊天代理请求 → ${url}`);
+
+    const body = JSON.stringify({ message, session_id: chatId });
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(120_000),
+      });
+    } catch (err) {
+      throw new ServiceUnavailableException(
+        `AI Engine 不可达（${AI_ENGINE_URL}）：${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ServiceUnavailableException(
+        `AI Engine 返回 HTTP ${res.status}：${text.slice(0, 200)}`,
+      );
+    }
+
+    const reader = res.body?.getReader();
+    if (!reader) throw new ServiceUnavailableException('AI Engine 响应体为空');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+
+        for (const part of parts) {
+          const trimmed = part.trim();
+          if (!trimmed) continue;
+
+          const dataMatch = trimmed.match(/^data:\s*(.+)$/m);
+          if (!dataMatch?.[1]) continue;
+
+          try {
+            const event: AiEngineSseEvent = JSON.parse(dataMatch[1]);
+            yield event;
+          } catch {
+            // 非 JSON 片段忽略
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
 }

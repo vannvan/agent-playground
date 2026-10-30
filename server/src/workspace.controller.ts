@@ -1,5 +1,6 @@
 import {
   Controller,
+  Delete,
   Get,
   NotFoundException,
   Param,
@@ -53,6 +54,12 @@ export class WorkspaceController {
   @Post('chats')
   createChat(@Req() request: AuthenticatedRequest) {
     return this.database.createUserChat(request.user.id, randomUUID());
+  }
+
+  @Delete('chats/:chatId')
+  async deleteChat(@Req() request: AuthenticatedRequest, @Param('chatId') chatId: string) {
+    try { await this.database.deleteUserChat(request.user.id, chatId); } catch { throw new NotFoundException('会话不存在'); }
+    return { ok: true };
   }
 
   @Get('chats/:chatId')

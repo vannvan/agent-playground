@@ -239,3 +239,79 @@ def run_chat_sync(session_id: str, user_message: str) -> dict[str, Any]:
 
     _run()
     return result_dict
+
+
+# ── 普通聊天（无工具，纯 LLM 流式）──────────────────────────────────────────
+
+async def run_plain_chat_stream(
+    session_id: str,
+    user_message: str,
+    history: list[dict[str, Any]] | None = None,
+) -> AsyncIterator[dict]:
+    """直接调用 LLM 流式对话，不经过 Agent graph，不使用任何工具。
+
+    session_id：必填，Python 侧用于维护会话上下文。
+    history：可选，[{role, content}] 形式的前置对话；缺省取 Python 内存历史。
+    """
+    from config import get_settings
+    from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+
+    cfg = get_settings()
+    llm_kwargs: dict[str, Any] = {"model": cfg.ai_model, "temperature": 0}
+    if cfg.ai_base_url:
+        llm_kwargs["base_url"] = cfg.ai_base_url
+    if cfg.ai_api_key:
+        llm_kwargs["api_key"] = cfg.ai_api_key
+
+    llm = ChatOpenAI(**llm_kwargs)
+
+    # 加载历史消息（优先用调用方传入，其次用 Python 内存）
+    msgs: list[Any] = []
+    if history:
+        for h in history:
+            role = h.get("role", "user")
+            content = h.get("content", "")
+            if not content:
+                continue
+            if role == "system":
+                msgs.append(SystemMessage(content=content))
+            elif role == "user":
+                msgs.append(HumanMessage(content=content))
+            elif role == "assistant":
+                msgs.append(AIMessage(content=content))
+    else:
+        mem = get_messages(session_id)
+        for m in mem:
+            role = m.get("role", "user")
+            content = m.get("content", "")
+            if not content:
+                continue
+            if role == "system":
+                msgs.append(SystemMessage(content=content))
+            elif role == "user":
+                msgs.append(HumanMessage(content=content))
+            elif role == "assistant":
+                msgs.append(AIMessage(content=content))
+
+    # 注入系统提示（仅当历史中没有时）
+    if not any(isinstance(m, SystemMessage) for m in msgs):
+        msgs.insert(0, SystemMessage(content=cfg.ai_system_prompt))
+
+    # 追加当前用户消息
+    msgs.append(HumanMessage(content=user_message))
+
+    try:
+        async for chunk in llm.astream(msgs):
+            if isinstance(chunk, AIMessage) and chunk.content:
+                yield {"type": "text", "content": chunk.content}
+            elif hasattr(chunk, "content") and chunk.content:
+                yield {"type": "text", "content": chunk.content}
+
+        yield {"type": "done", "session_id": session_id}
+    except Exception as e:
+        logger.exception("plain chat 异常")
+        yield {"type": "error", "message": str(e)}
+        yield {"type": "done", "session_id": session_id}
+    finally:
+        add_message(session_id, "user", user_message)
+        logger.info("普通聊天会话 %s 完成", session_id)
