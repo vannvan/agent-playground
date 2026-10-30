@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  CircleStop,
   Check,
   Copy,
   Database,
@@ -84,7 +83,6 @@ function App() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [copiedMessageId, setCopiedMessageId] = useState<string | number | null>(null)
   const [isStreaming, setIsStreaming] = useState(false)
-  const [useKnowledgeBase, setUseKnowledgeBase] = useState(false)
   const [selectedSkill, setSelectedSkill] = useState<{ id: string; displayName: string } | null>(null)
   const [skillPanelOpen, setSkillPanelOpen] = useState(false)
   const [error, setError] = useState('')
@@ -614,13 +612,16 @@ function App() {
             </div>
           )}
           {chatMessages.map((message, index) => message.role === 'user' ? (
+              <>
               <div className="message user-message" key={message.id}>
                   <p>{message.content}</p>
               </div>
+              <div className="msg-divider" />
+              </>
             ) : <div className="message assistant-message" key={message.id}>
                 <div className="answer">
                   <Suspense fallback={<p className="assistant-markdown">{message.content}</p>}>
-                    <Streamdown className="assistant-markdown" mode="streaming" 
+                    <Streamdown className="assistant-markdown" mode="streaming" shikiTheme={['github-dark', 'github-dark']}
                     // controls={{ code: { copy: false, download: false } }}
                      isAnimating={isStreaming && index === chatMessages.length - 1}
                      >

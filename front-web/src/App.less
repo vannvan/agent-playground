@@ -237,6 +237,13 @@
 .assistant-message {
   text-align: left;
 }
+.msg-divider {
+  width: 100%;
+  height: 1px;
+  border: none;
+  border-top: 1px dashed #d4daf0;
+  margin: 20px 0;
+}
 .cursor {
   display: inline-block;
   height: 17px;
@@ -2289,19 +2296,24 @@
     0.88em 'DM Mono',
     monospace;
 }
-.assistant-markdown [data-streamdown='code-block'] {
-  gap: 0;
-  padding: 0;
-  border: 0;
-  border-radius: 10px;
-  background: transparent;
-}
 .assistant-markdown [data-streamdown='code-block-body'] {
   padding: 13px 15px;
-  border: 1px solid #34384e;
-  border-radius: 10px;
-  color: #e5e7eb;
-  background: #25283a;
+  border-color: #343849;
+  color: #e4e6ef;
+  background: #202330;
+}
+.assistant-markdown [data-streamdown='code-block'] {
+  border-color: #343849;
+  color: #e4e6ef;
+  background: #171923;
+}
+.assistant-markdown [data-streamdown='code-block-header'] {
+  color: #a6acc3;
+}
+.assistant-markdown [data-streamdown='code-block-actions'] {
+  border-color: #41465a;
+  color: #d7daea;
+  background: #272b39;
 }
 .assistant-markdown pre {
   max-width: 100%;
@@ -2310,7 +2322,7 @@
   overflow: auto;
   border: 0;
   border-radius: 0;
-  color: #e5e7eb;
+  color: inherit;
   background: transparent;
   font:
     12px/1.65 'DM Mono',

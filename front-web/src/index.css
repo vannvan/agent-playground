@@ -1,7 +1,32 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600&display=swap');
 @import "tailwindcss";
-@source "../node_modules/streamdown/dist/*.js";
-:root { font-family: 'Space Grotesk', 'PingFang SC', sans-serif; font-synthesis: none; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+@source "../../node_modules/streamdown/dist/*.js";
+@theme inline {
+	--color-background: var(--background);
+	--color-border: var(--border);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-foreground: var(--foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-sidebar: var(--sidebar);
+	--radius-xl: var(--radius);
+}
+:root {
+	--background: #fff;
+	--foreground: #343b4d;
+	--card: #fff;
+	--card-foreground: #343b4d;
+	--muted: #f2f3f8;
+	--muted-foreground: #727895;
+	--border: #dfe3ee;
+	--sidebar: #f2f3f8;
+	--radius: 0.75rem;
+	font-family: 'Space Grotesk', 'PingFang SC', sans-serif;
+	font-synthesis: none;
+	text-rendering: optimizeLegibility;
+	-webkit-font-smoothing: antialiased;
+}
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; background: #f8fafc; }
 button, textarea { font-family: inherit; }
