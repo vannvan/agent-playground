@@ -19,7 +19,8 @@ from schemas import (
 from agent import run_chat_stream
 from agent import run_plain_chat_stream
 from tools import get_tool_names, TOOLS
-from retriever import collection_count
+from retriever import collection_count, get_db
+from collections import Counter
 from memory import create_session, get_session_history
 
 logging.basicConfig(
@@ -83,11 +84,69 @@ async def list_tools():
     return ToolsResp(tools=get_tool_names())
 
 
+# 知识库主题 → 引导问题映射
+_TOPIC_QUESTIONS: dict[str, list[str]] = {
+    "模块化": ["模块是怎么导出和导入的？", "AMD 和 CommonJS 有什么区别？"],
+    "Promise": ["Promise 的链式调用怎么处理错误？", "async/await 和 Promise 有什么区别？"],
+    "async,await": ["async/await 的运行原理是什么？", "如何处理并发异步请求？"],
+    "ECMAScript6概要": ["ES6 有哪些新特性？", "箭头函数和普通函数有什么区别？"],
+    "函数": ["闭包是怎么工作的？", "如何理解 this 的指向？"],
+    "对象、函数、原型": ["原型链是怎么工作的？", "如何实现继承？"],
+    "数据类型": ["JavaScript 有哪些基本类型？", "类型转换的规则是什么？"],
+    "网络请求": ["fetch API 怎么使用？", "如何处理请求超时和重试？"],
+    "文档-事件-接口": ["DOM 事件委托是什么？", "如何高效操作 DOM？"],
+    "异步": ["事件循环是怎么工作的？", "宏任务和微任务有什么区别？"],
+}
+_FALLBACK_QUESTIONS = [
+    "这个知识库主要包含哪些内容？",
+    "如何处理超时重试？",
+    "代码里的 fetch 怎么写？",
+    "部署流程是什么？",
+]
+
+
+@app.get("/suggestions", tags=["suggestions"])
+async def suggestions():
+    """根据知识库文档主题返回推荐问题列表。"""
+    try:
+        db = get_db()
+        info = db.get(include=["metadatas"])
+        sources = [m.get("source", "") for m in (info.get("metadatas") or []) if m]
+        files = Counter(s.split("/")[-1].replace(".md", "").replace(".txt", "").replace(".pdf", "") for s in sources)
+
+        questions: list[str] = []
+        seen_topics: set[str] = set()
+        for filename, _ in files.most_common(8):
+            # 尝试匹配主题
+            matched = False
+            for topic, qs in _TOPIC_QUESTIONS.items():
+                if topic in filename and topic not in seen_topics:
+                    seen_topics.add(topic)
+                    questions.extend(qs[:2])
+                    matched = True
+                    break
+            if matched and len(questions) >= 6:
+                break
+
+        # 兜底：不足 4 条则补充通用问题
+        if len(questions) < 4:
+            for q in _FALLBACK_QUESTIONS:
+                if q not in questions:
+                    questions.append(q)
+                if len(questions) >= 6:
+                    break
+
+        return {"questions": questions[:6]}
+    except Exception as e:
+        logger.warning("获取建议问题失败：%s", e)
+        return {"questions": list(_FALLBACK_QUESTIONS)}
+
+
 @app.post("/chat/stream", tags=["chat"])
 async def chat_stream(req: ChatReq):
     session_id = req.session_id or create_session()
     return StreamingResponse(
-        event_stream(session_id, req.message),
+        event_stream(session_id, req.message, req.system_prompt),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -96,9 +155,9 @@ async def chat_stream(req: ChatReq):
     )
 
 
-async def event_stream(session_id: str, message: str):
+async def event_stream(session_id: str, message: str, system_prompt: str | None = None):
     """SSE 生成器，逐事件 yield。"""
-    async for ev in run_chat_stream(session_id, message):
+    async for ev in run_chat_stream(session_id, message, system_prompt):
         yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
 

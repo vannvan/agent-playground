@@ -140,12 +140,19 @@ def _make_config() -> dict:
     return {"recursion_limit": get_settings().recursion_limit}
 
 
-async def run_chat_stream(session_id: str, user_message: str) -> AsyncIterator[dict]:
+async def run_chat_stream(
+    session_id: str,
+    user_message: str,
+    system_prompt: str | None = None,
+) -> AsyncIterator[dict]:
     """流式对话入口，yield SSE 事件 dict。"""
     start_ts = time.time()
     graph = get_graph()
 
-    msgs = [HumanMessage(content=user_message)]
+    # 使用传入的 system_prompt，否则用配置中的默认值
+    cfg = get_settings()
+    effective_system = system_prompt if system_prompt else cfg.ai_system_prompt
+    msgs: list[Any] = [SystemMessage(content=effective_system), HumanMessage(content=user_message)]
     state = AgentState(session_id=session_id, messages=msgs)
     config = _make_config()
 

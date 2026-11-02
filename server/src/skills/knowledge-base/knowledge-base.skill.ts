@@ -1,4 +1,26 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+
+const ANSWER_SYSTEM_PROMPT = `你是基于内部知识库回答的助手。
+给定若干知识片段和用户问题，按以下规则组织回答：
+
+## 格式要求
+- 用自然的段落结构回答，**禁止使用**「结果1 / 结果2 / 结果3」或「① ② ③」这类条目标题
+- 将多个相关片段**融合成一个主题段落**，同一主题的内容放在同一段，不同主题分段落
+- 每段开头可直接陈述结论，无需"根据资料显示"之类的引导词
+
+## 内容规则
+1. 只用片段里的事实；片段没提到的不要编造，资料没有就直说"没有相关信息"
+2. 默认 3-5 句讲清楚核心结论，除非用户明确要求展开细节
+3. 像向同事口头解释，自然、简洁、口语化
+
+## 示例（正确 vs 错误）
+✅ 正确：
+"CORS 错误通常出现在前后端域名或端口不一致时。解决方案是将前端请求的 base URL 指向后端地址，同时在后端开启跨域支持，配置允许的 origin 列表。"
+
+❌ 错误：
+"结果1：CORS 错误出现……
+结果2：解决方案是……"
+`;
 import { SkillBase } from '../skill-base';
 
 /**
@@ -27,7 +49,7 @@ export class KnowledgeBaseSkill extends SkillBase {
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, session_id: null }),
+        body: JSON.stringify({ message: userMessage, session_id: null, system_prompt: ANSWER_SYSTEM_PROMPT }),
         signal: AbortSignal.timeout(120_000),
       });
     } catch (err) {

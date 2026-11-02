@@ -9,6 +9,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 
+from normalize import normalize_document
+
 DATA_DIR   = Path("data")            # 你的知识库文件放这里
 DB_DIR     = "vector_db"             # 向量库存这里
 MANIFEST   = Path("ingest_manifest.json")  # 记录已处理文件（增量依据）
@@ -55,7 +57,19 @@ def main():
         pages = LOADERS[path.suffix.lower()](str(path)).load()
         for d in pages:
             d.metadata["source"] = str(path)        # 保留来源，供引用溯源
-        all_docs += splitter.split_documents(pages)
+
+        # 预处理：代码块原样保留，正文 URL 脱敏
+        normalized = []
+        for d in pages:
+            normalized.extend(normalize_document(d))
+
+        # 文本块走切分，代码块直接入库
+        text_docs  = [d for d in normalized if d.metadata.get("kind") != "code"]
+        code_docs  = [d for d in normalized if d.metadata.get("kind") == "code"]
+
+        if text_docs:
+            text_docs = splitter.split_documents(text_docs)
+        all_docs += text_docs + code_docs
         new_files.append((str(path), h))
 
     if all_docs:
@@ -63,7 +77,7 @@ def main():
         for p, h in new_files:
             manifest[p] = h
         MANIFEST.write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
-        print(f"入库 {len(all_docs)} 个片段，来自 {len(new_files)} 个新增/变更文件")
+        print(f"入库 {len(all_docs)} 个片段（代码块 {sum(1 for d in all_docs if d.metadata.get('kind')=='code')}，文本块 {sum(1 for d in all_docs if d.metadata.get('kind')=='text')}），来自 {len(new_files)} 个新增/变更文件")
     else:
         print("无新增文件，跳过本次建库")
 
