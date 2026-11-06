@@ -3,8 +3,8 @@ import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, Copy, FileText, LoaderCircle, PenLine, Sparkles } from 'lucide-react'
 import ManuscriptReviewPage from './ManuscriptReviewPage'
-import Select from '../components/Select'
-import { rewritesApi } from '../api/front'
+import { rewritesApi } from '../services/api'
+import { Select } from '@lobehub/ui';
 
 const Streamdown = lazy(() => import('streamdown').then(({ Streamdown: Component }) => ({ default: Component })))
 
@@ -152,7 +152,7 @@ export function RewriteWorkspace({ history, activeId, onSelect, onNew, onCreated
     <div className="rewrite-layout">
       <form className="rewrite-form" onSubmit={generate}>
         <label htmlFor="rewrite-author">选择作者</label>
-        <Select id="rewrite-author" value={author} onValueChange={setAuthor} disabled={loadingAuthors || authors.length === 0} options={[
+        <Select id="rewrite-author" value={author} onChange={setAuthor} disabled={loadingAuthors || authors.length === 0} options={[
           ...(loadingAuthors ? [{ value: '', label: '正在读取作者…' }] : []),
           ...(!loadingAuthors && authors.length === 0 ? [{ value: '', label: '暂无可用作者' }] : []),
           ...authors.map((item) => ({ value: item.id, label: `${item.name} · ${item.articleCount} 篇文章` })),
@@ -168,7 +168,7 @@ export function RewriteWorkspace({ history, activeId, onSelect, onNew, onCreated
 
         <div className="rewrite-form-bottom">
           <label htmlFor="rewrite-length">目标篇幅
-            <Select id="rewrite-length" size="compact" wrapperClassName="rewrite-length-select" value={String(targetLength)} onValueChange={(value) => setTargetLength(Number(value))} options={[
+            <Select id="rewrite-length"  className="rewrite-length-select" value={String(targetLength)} onChange={(value) => setTargetLength(Number(value))} options={[
               { value: '800', label: '短篇 · 约 800 字' },
               { value: '1500', label: '标准 · 约 1500 字' },
               { value: '2500', label: '长篇 · 约 2500 字' },

@@ -193,6 +193,11 @@ export class AppController {
         if (ev.type === 'text' && ev.content) {
           response.write(`data: ${JSON.stringify({ content: ev.content })}\n\n`);
           answer += ev.content;
+        } else if (ev.type === 'tool') {
+          // 透传工具调用事件，前端展示"AI 正在检索..."
+          response.write(`event: tool\ndata: ${JSON.stringify({ name: ev.name, args: ev.args })}\n\n`);
+        } else if (ev.type === 'sources') {
+          response.write(`event: sources\ndata: ${JSON.stringify({ sources: ev.sources ?? [] })}\n\n`);
         } else if (ev.type === 'done') {
           plainSessionId = ev.session_id ?? chatId;
         } else if (ev.type === 'error') {

@@ -21,6 +21,18 @@ export class AiEngineController {
     }
   }
 
+  @Get('suggestions')
+  async suggestions(@NestReq() req: AuthenticatedRequest) {
+    const url = `${(process.env.AI_ENGINE_URL ?? 'http://localhost:8000').replace(/\/+$/, '')}/suggestions`;
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(5_000) });
+      const data = await res.json() as { questions?: string[] };
+      return { questions: data.questions ?? [] };
+    } catch {
+      return { questions: [] };
+    }
+  }
+
   /**
    * 流式知识库对话
    * SSE 格式兼容前端现有解析逻辑：

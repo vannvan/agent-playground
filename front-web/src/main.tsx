@@ -1,19 +1,19 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { RouterProvider } from 'react-router-dom'
+import { ConfigProvider } from '@lobehub/ui'
 import './index.css'
-import { createBrowserRouter, RouterProvider } from 'react-router-dom'
-import App from './App.tsx'
-import ManuscriptReviewPage from './features/ManuscriptReviewPage.tsx'
-import RagPage from './features/RagPage.tsx'
+import './styles/lobe-theme.css'
+import '@lobehub/ui/style.css'
+import { initLobeTheme } from './styles/theme'
+import { router } from './router'
 
-const router = createBrowserRouter([
-  { path: '/', element: <App /> },
-  { path: '/review', element: <ManuscriptReviewPage /> },
-  { path: '/rag', element: <RagPage /> },
-])
+initLobeTheme()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <ConfigProvider motion={undefined as any}>
+      <RouterProvider router={router} />
+    </ConfigProvider>
   </StrictMode>,
 )

@@ -4,10 +4,10 @@ import {
   AlertTriangle, ArrowLeft, Check, ChevronDown, Circle, Clipboard, Eye, FileText,
   LoaderCircle, Pencil, RefreshCw, WandSparkles, X,
 } from 'lucide-react'
-import '../App.less'
+import '../styles/App.less'
 import { useNavigate } from 'react-router-dom'
 import Select from '../components/Select'
-import { authApi, rewritesApi } from '../api/front'
+import { authApi, rewritesApi } from '../services/api'
 
 type Author = { id: string; name: string; articleCount: number }
 type Severity = 'severe' | 'moderate' | 'polish'

@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Optional
 
 import json
+from dotenv import load_dotenv
+load_dotenv()
 import logging
 import uuid
 from contextlib import asynccontextmanager

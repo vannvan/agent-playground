@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, BookOpen, Check, CircleAlert, FileText, FileUp, FolderOpen, LoaderCircle, MessageSquareText, Plus, RefreshCw, Send, Trash2 } from 'lucide-react'
 import 'streamdown/styles.css'
 import Select from '../components/Select'
-import { ragApi } from '../api/front'
+import { ragApi } from '../services/api'
 import './RagPage.less'
 
 const Streamdown = lazy(() => import('streamdown').then(({ Streamdown: Component }) => ({ default: Component })))

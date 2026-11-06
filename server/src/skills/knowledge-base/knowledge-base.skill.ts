@@ -1,31 +1,42 @@
 import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 
 const ANSWER_SYSTEM_PROMPT = `你是基于内部知识库回答的助手。
-给定若干知识片段和用户问题，按以下规则组织回答：
+给定若干知识片段和用户问题，按以下规则组织回答。
 
-## 格式要求
-- 用自然的段落结构回答，**禁止使用**「结果1 / 结果2 / 结果3」或「① ② ③」这类条目标题
-- 将多个相关片段**融合成一个主题段落**，同一主题的内容放在同一段，不同主题分段落
-- 每段开头可直接陈述结论，无需"根据资料显示"之类的引导词
+【格式要求】
+- 用自然的段落结构回答，禁止用"结果1/结果2"或"①②③"这类条目标题
+- 把多个相关片段融合成一个主题段落：同一主题放一段，不同主题分段落
+- 每段开头直接陈述结论，不要"根据资料显示"这类引导词
+- 默认 3-5 句讲清核心结论；用户明确要求细节时才展开
+- 像向同事口头解释，自然、简洁、口语化
 
-## 内容规则
-1. 只用片段里的事实；片段没提到的不要编造，资料没有就直说"没有相关信息"
-2. 默认 3-5 句讲清楚核心结论，除非用户明确要求展开细节
-3. 像向同事口头解释，自然、简洁、口语化
+【事实规则】
+- 只用片段里的事实；片段没提到的不要编造
+- 资料确实没有相关内容时，直说"知识库里没有相关信息"，不硬答
+- 需要可追溯时可轻量标注（来源：文件名），不打断阅读
 
-## 示例（正确 vs 错误）
-✅ 正确：
-"CORS 错误通常出现在前后端域名或端口不一致时。解决方案是将前端请求的 base URL 指向后端地址，同时在后端开启跨域支持，配置允许的 origin 列表。"
+【检索不足时，按需调用工具，不硬答】
+- 问题模糊、有歧义、缺关键信息 → 调用 ask_clarification 反问澄清，而不是瞎检索
+- 一次检索不够、需要查" A 与 B 的关系" → 调用 search_recursive 二次检索
+- 知识库里查不到、但能转生图/写作/网页搜索 → 调用 route_to_other 转给其他能力
+- 检索到的是代码、且用户问"能不能跑/什么意思" → 调用 explain_or_run_code
+- 检索结果足够回答时，不要调用以上任何工具，直接整合回答
 
-❌ 错误：
-"结果1：CORS 错误出现……
+【示例】
+✅ 正确（融合 + 口语化 + 直接给结论）：
+"CORS 错误通常出现在前后端域名或端口不一致时。解决方法是把前端请求的 base URL 指向后端地址，并在后端开启跨域、配置允许的 origin 列表。"
+
+❌ 错误（条目标题 + 照搬原文）：
+"结果1：CORS 错误出现在……
 结果2：解决方案是……"
 `;
+
 import { SkillBase } from '../skill-base';
 
 /**
  * 知识库问答技能
  * 将请求转发到 ai-engine，以 SSE 形式流式返回结果。
+ * 透传 tool/sources 事件供前端展示工具调用过程。
  */
 @Injectable()
 export class KnowledgeBaseSkill extends SkillBase {
@@ -83,6 +94,43 @@ export class KnowledgeBaseSkill extends SkillBase {
         for (const part of parts) {
           const trimmed = part.trim();
           if (!trimmed) continue;
+
+          // 错误事件直接抛出
+          const errorMatch = trimmed.match(/^event:\s*error\s*\ndata:\s*(.+)$/m);
+          if (errorMatch) {
+            try {
+              const errData = JSON.parse(errorMatch[1]);
+              throw new Error(errData.message ?? 'AI Engine 返回错误');
+            } catch (e) {
+              throw new Error(e instanceof Error ? e.message : 'AI Engine 返回错误');
+            }
+          }
+
+          // 工具调用事件：透传 name 和 args，让上游转发给前端
+          const toolMatch = trimmed.match(/^event:\s*tool\s*\ndata:\s*(.+)$/m);
+          if (toolMatch) {
+            try {
+              const toolEvent = JSON.parse(toolMatch[1]);
+              yield `__TOOL_CALL__${JSON.stringify(toolEvent)}`;
+            } catch {
+              // 忽略非 JSON 片段
+            }
+            continue;
+          }
+
+          // 来源事件：透传 sources，供前端展示引用
+          const sourcesMatch = trimmed.match(/^event:\s*sources\s*\ndata:\s*(.+)$/m);
+          if (sourcesMatch) {
+            try {
+              const sourcesEvent = JSON.parse(sourcesMatch[1]);
+              yield `__SOURCES__${JSON.stringify(sourcesEvent)}`;
+            } catch {
+              // 忽略
+            }
+            continue;
+          }
+
+          // 正常数据事件
           const dataMatch = trimmed.match(/^data:\s*(.+)$/m);
           if (!dataMatch?.[1]) continue;
           try {

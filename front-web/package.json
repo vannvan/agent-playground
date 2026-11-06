@@ -10,9 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@lobehub/fluent-emoji": "^5.0.1",
+    "@lobehub/icons": "^6.15.0",
+    "@lobehub/streamdown": "^1.4.5",
+    "@lobehub/ui": "^6.15.2",
     "@tailwindcss/vite": "^4.3.3",
     "axios": "^1.21.0",
-    "lucide-react": "^0.468.0",
+    "lucide-react": "^1.66.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4",

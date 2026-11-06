@@ -146,6 +146,12 @@
   flex-direction: column;
   background: #f8faf6;
 }
+.chat-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .topbar {
   padding: 35px clamp(24px, 5vw, 78px) 27px;
   border-bottom: 1px solid @line;
@@ -205,6 +211,36 @@
 }
 .empty-state h3 span {
   color: @orange;
+}
+.suggestion-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin: 22px auto 0;
+  max-width: 640px;
+  padding: 0;
+  list-style: none;
+}
+.suggestion-chip {
+  padding: 7px 14px;
+  border: 1px solid @line;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.55);
+  color: @ink;
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  &:hover {
+    border-color: @orange;
+    background: white;
+    color: @orange;
+  }
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
 }
 .empty-note {
   color: #9ca59e;
@@ -1362,6 +1398,12 @@
   overflow: hidden;
   background: rgba(250, 251, 255, 0.66);
 }
+.chat-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 .topbar {
   border-color: rgba(131, 145, 195, 0.15);
 }
@@ -2088,6 +2130,12 @@
   margin: 0 0 0 2px;
   padding: 27px 18px 20px;
   color: #414a5d;
+}
+.chat-page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 .brand {
   border-color: #f0f2f7;
@@ -4584,6 +4632,9 @@
   flex: 0 0 auto;
   padding-top: 15px;
   border-top: 1px solid #eef0f5;
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .sidebar-model-settings {
   width: 100%;
@@ -4629,10 +4680,9 @@
     padding-top: 7px;
     border-top: 1px solid #eef0f5;
   }
-  .sidebar-model-settings {
-    width: auto;
-    min-height: 34px;
-    padding-inline: 8px;
+  .user-avatar-btn {
+    flex: 1;
+    height: 34px;
   }
   .sidebar-foot {
     order: 0;
@@ -4719,6 +4769,12 @@
 }
 
 /* ── Skill selector (+ button + panel + chip) ─────────────────────────── */
+
+/* ── ChatInputArea layout fix ───────────────────────────────────────────── */
+.input-wrap {
+  display: flex;
+  align-items: stretch;
+}
 .skill-input-group {
   position: relative;
   display: flex;
@@ -4903,4 +4959,288 @@
 .chat-history-item-wrap:hover .chat-history-delete:hover {
   color: #d65f44;
   background: rgba(214, 95, 68, 0.08);
+}
+
+
+
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 6px;
+  color: #929d94;
+  font: 11px 'Space Grotesk', 'PingFang SC', sans-serif;
+}
+.user-message-inner {
+  max-width: 75%;
+  margin-left: auto;
+  background: #eeedff;
+  color: @ink;
+  padding: 10px 14px;
+  border-radius: 18px 18px 4px 18px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  p { margin: 0; }
+}
+
+.assistant-message-inner {
+  width: 100%;
+  max-width: 820px;
+}
+
+.assistant-message-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+  button {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 8px;
+    border: 1px solid @line;
+    border-radius: 6px;
+    background: transparent;
+    color: @muted;
+    font-size: 11px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    &:hover {
+      border-color: @orange;
+      color: @orange;
+      background: rgba(120,141,240,0.05);
+    }
+    svg { flex: 0 0 auto; }
+  }
+}
+
+/* ChatList bubble overrides */
+.lbe-chat-list-item {
+  &.lbe-chat-list-item--user {
+    .user-message-inner { margin-left: auto; }
+  }
+}
+
+/* Lobe Avatar overrides */
+.lbe-avatar {
+  &.user-avatar-btn {
+    border: 1.5px solid rgba(216,243,107,0.35);
+    background: rgba(216,243,107,0.1);
+    color: @lime;
+    font-weight: 600;
+    font-size: 15px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    &:hover {
+      border-color: @lime;
+      background: rgba(216,243,107,0.18);
+    }
+  }
+}
+
+/* Lobe Button — 发送按钮 */
+.lbe-button {
+  &.send-btn {
+    background: @orange;
+    color: white;
+    border: none;
+    &:hover:not(:disabled) { background: #5a73e0; }
+    &:disabled { opacity: 0.45; }
+  }
+}
+
+/* Lobe Tooltip */
+.lbe-tooltip {
+  .lbe-tooltip-popup {
+    background: @ink;
+    color: white;
+    font-size: 12px;
+  }
+}
+
+/* Lobe Badge */
+.lbe-badge {
+  &.badge-purple {
+    background: rgba(120,141,240,0.12);
+    color: @orange;
+    border: 1px solid rgba(120,141,240,0.25);
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+  }
+}
+
+/* Lobe Typography Title override */
+.lbe-typography {
+  h3, .lbe-typography-title-3 {
+    font-size: 25px !important;
+    letter-spacing: -0.04em !important;
+    font-weight: 500 !important;
+    margin: 9px 0 0 !important;
+  }
+}
+
+/* ── Chat Block 三区块渲染样式 ─────────────────────────────────────────────── */
+
+.messages-list {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.message {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  &--user { align-items: flex-end; }
+  &--assistant { align-items: flex-start; }
+}
+
+.text-block {
+  width: 100%;
+}
+
+.assistant-markdown {
+  p { margin: 0 0 8px; line-height: 1.7; }
+  p:last-child { margin-bottom: 0; }
+  pre {
+    background: #1e1e2e;
+    border-radius: 8px;
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.5;
+    margin: 8px 0;
+    code { background: none; padding: 0; }
+  }
+  code {
+    background: rgba(120,141,240,0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 13px;
+    color: @orange;
+  }
+  ul, ol { padding-left: 20px; margin: 6px 0; }
+  li { margin: 3px 0; line-height: 1.6; }
+  blockquote {
+    border-left: 3px solid @lime;
+    padding-left: 12px;
+    color: @muted;
+    margin: 8px 0;
+  }
+}
+
+/* 工具调用卡片 */
+.tool-call-block {
+  margin: 8px 0;
+}
+.tool-call-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 7px 12px;
+  border: 1px solid @line;
+  border-radius: 8px;
+  background: rgba(120,141,240,0.04);
+  color: @ink;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  &:hover:not(:disabled) {
+    border-color: lighten(@line, 8%);
+    background: rgba(120,141,240,0.07);
+  }
+  &:disabled { cursor: default; opacity: 0.7; }
+  .tool-label { flex: 1; font-weight: 500; }
+  .tool-args {
+    color: @muted;
+    font-size: 12px;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  &.loading {
+    .spin { animation: spin 1s linear infinite; }
+  }
+}
+.chevron {
+  transition: transform 0.2s;
+  &.open { transform: rotate(90deg); }
+}
+.tool-sources {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 1px solid @line;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  background: rgba(0,0,0,0.02);
+}
+.tool-source-item {
+  margin-bottom: 8px;
+  &:last-child { margin-bottom: 0; }
+}
+.tool-source-file {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: @orange;
+  margin-bottom: 2px;
+  font-family: 'JetBrains Mono', monospace;
+}
+.tool-source-content {
+  margin: 0;
+  font-size: 12px;
+  color: @muted;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* 澄清交互块 */
+.clarify-block {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(214,95,68,0.25);
+  border-radius: 10px;
+  background: rgba(214,95,68,0.05);
+  margin: 8px 0;
+}
+.clarify-icon {
+  flex: 0 0 auto;
+  color: @orange;
+  margin-top: 1px;
+}
+.clarify-body { flex: 1; }
+.clarify-question {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 500;
+  color: @ink;
+}
+.clarify-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: @muted;
+}
+.clarify-continue {
+  flex: 0 0 auto;
+  padding: 5px 14px;
+  border: 1px solid @orange;
+  border-radius: 6px;
+  background: transparent;
+  color: @orange;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+  &:hover {
+    background: @orange;
+    color: white;
+  }
 }
