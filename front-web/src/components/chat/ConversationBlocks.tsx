@@ -1,9 +1,10 @@
-import { Suspense, useEffect, useRef,lazy } from 'react'
+import { Suspense, useEffect, useRef, lazy } from 'react'
 import { LoaderCircle } from 'lucide-react'
-// import Streamdown from 'streamdown'
 import type { ChatBlock } from '../../types'
 import { ToolCallBlock } from './ToolCallBlock'
 import { ClarifyBlock } from './ClarifyBlock'
+import './ToolCallBlock/index.less'
+import './ClarifyBlock/index.less'
 
 interface ConversationBlocksProps {
   blocks: ChatBlock[]

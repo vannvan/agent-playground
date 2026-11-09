@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     db_dir: Path = Path("vector_db")
     session_ttl: int = 3600
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
+    rag_score_threshold: float = 0.45
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 
 

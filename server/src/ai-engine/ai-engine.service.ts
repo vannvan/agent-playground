@@ -8,18 +8,58 @@ export interface AiEngineChatInput {
 }
 
 export interface AiEngineSseEvent {
-  type: 'text' | 'tool' | 'sources' | 'done' | 'error';
+  type: 'text' | 'tool' | 'tool_result' | 'sources' | 'done' | 'error';
   content?: string;
   name?: string;
   args?: string;
   session_id?: string;
   message?: string;
+  status?: string;
   sources?: Array<{ content: string; source: string; score: number }>;
 }
 
 @Injectable()
 export class AiEngineService {
   private readonly logger = new Logger(AiEngineService.name);
+
+  /** Parse SSE stream from Python ai-engine into typed events */
+  private async *parseSseStream(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+    decoder: TextDecoder,
+  ): AsyncGenerator<AiEngineSseEvent, void, unknown> {
+    let buffer = '';
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+
+        for (const part of parts) {
+          const trimmed = part.trim();
+          if (!trimmed) continue;
+
+          // Match data: lines (SSE format)
+          const dataMatch = trimmed.match(/^data:\s*(.+)$/m);
+          if (!dataMatch?.[1]) continue;
+
+          try {
+            const event: AiEngineSseEvent = JSON.parse(dataMatch[1]);
+            yield event;
+          } catch {
+            // Non-JSON fragment, ignore
+          }
+        }
+      }
+    } catch (err) {
+      this.logger.error(`SSE stream parse error: ${err instanceof Error ? err.message : String(err)}`);
+      yield { type: 'error', message: err instanceof Error ? err.message : '流解析失败' };
+    } finally {
+      try { reader.releaseLock(); } catch {}
+    }
+  }
 
   /** 流式对话：转发 ai-engine /chat/stream SSE，yield 解析后的事件 */
   async *streamChat(input: AiEngineChatInput): AsyncGenerator<AiEngineSseEvent, void, unknown> {
@@ -58,58 +98,7 @@ export class AiEngineService {
     if (!reader) throw new ServiceUnavailableException('AI Engine 响应体为空');
 
     const decoder = new TextDecoder();
-    let buffer = '';
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() ?? '';
-
-        for (const part of parts) {
-          const trimmed = part.trim();
-          if (!trimmed) continue;
-
-          const dataMatch = trimmed.match(/^data:\s*(.+)$/m);
-          if (!dataMatch?.[1]) continue;
-
-          try {
-            const event: AiEngineSseEvent = JSON.parse(dataMatch[1]);
-            yield event;
-          } catch {
-            // 非 JSON 片段忽略
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-  }
-
-  /** 同步对话（调试用） */
-  async chatSync(input: AiEngineChatInput) {
-    const url = `${AI_ENGINE_URL.replace(/\/+$/, '')}/chat/sync`;
-    const body = JSON.stringify({ message: input.message, session_id: input.session_id ?? null });
-
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-        signal: AbortSignal.timeout(60_000),
-      });
-    } catch (err) {
-      throw new ServiceUnavailableException(`AI Engine 不可达：${err instanceof Error ? err.message : String(err)}`);
-    }
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new ServiceUnavailableException(`AI Engine 返回 HTTP ${res.status}：${text.slice(0, 200)}`);
-    }
-    return res.json();
+    yield* this.parseSseStream(reader, decoder);
   }
 
   /** 普通聊天流式：转发 ai-engine /chat/plain/stream SSE，yield 解析后的事件 */
@@ -147,34 +136,29 @@ export class AiEngineService {
     if (!reader) throw new ServiceUnavailableException('AI Engine 响应体为空');
 
     const decoder = new TextDecoder();
-    let buffer = '';
+    yield* this.parseSseStream(reader, decoder);
+  }
 
+  /** 同步对话（调试用） */
+  async chatSync(input: AiEngineChatInput) {
+    const url = `${AI_ENGINE_URL.replace(/\/+$/, '')}/chat/sync`;
+    const body = JSON.stringify({ message: input.message, session_id: input.session_id ?? null });
+
+    let res: Response;
     try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop() ?? '';
-
-        for (const part of parts) {
-          const trimmed = part.trim();
-          if (!trimmed) continue;
-
-          const dataMatch = trimmed.match(/^data:\s*(.+)$/m);
-          if (!dataMatch?.[1]) continue;
-
-          try {
-            const event: AiEngineSseEvent = JSON.parse(dataMatch[1]);
-            yield event;
-          } catch {
-            // 非 JSON 片段忽略
-          }
-        }
-      }
-    } finally {
-      reader.releaseLock();
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: AbortSignal.timeout(60_000),
+      });
+    } catch (err) {
+      throw new ServiceUnavailableException(`AI Engine 不可达：${err instanceof Error ? err.message : String(err)}`);
     }
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new ServiceUnavailableException(`AI Engine 返回 HTTP ${res.status}：${text.slice(0, 200)}`);
+    }
+    return res.json();
   }
 }

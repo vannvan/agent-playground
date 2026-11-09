@@ -85,7 +85,7 @@ def _format_result(
     }
 
 
-def retrieve(query: str, k: int = 6) -> list[dict[str, Any]]:
+def retrieve(query: str, k: int = 6, score_threshold: float | None = None) -> list[dict[str, Any]]:
     """混合检索主入口：通道 A（向量）+ 通道 B（BM25），去重合并后返回。
 
     Args:
@@ -97,7 +97,9 @@ def retrieve(query: str, k: int = 6) -> list[dict[str, Any]]:
     """
     # ── 通道 A：向量检索 ───────────────────────────────────────────────────
     vector_hits = _vector_search(query, k=k)
-    logger.info("通道A（向量）命中 %d 条", len(vector_hits))
+    threshold = get_settings().rag_score_threshold if score_threshold is None else score_threshold
+    vector_hits = [(doc, score) for doc, score in vector_hits if score >= threshold]
+    logger.info("通道A（向量）返回后通过阈值 %.3f：%d 条", threshold, len(vector_hits))
 
     # ── 通道 B：BM25 关键词检索（接口预留） ────────────────────────────────
     bm25_hits = _bm25_search(query, k=k)
@@ -126,7 +128,9 @@ def retrieve(query: str, k: int = 6) -> list[dict[str, Any]]:
     # ── 排序并截取 ─────────────────────────────────────────────────────────
     items = list(indexed.values())
     items.sort(key=lambda x: x["score"], reverse=True)
-    return items[:k]
+    results = items[:k]
+    logger.info("混合检索最终有效结果：%d 条", len(results))
+    return results
 
 
 # ── 兼容旧接口 ────────────────────────────────────────────────────────────────

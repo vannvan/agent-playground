@@ -2,47 +2,55 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
+  ArrowUp,
   BookOpen,
   Check,
   ChevronLeft,
   ChevronRight,
   Copy,
+  LoaderCircle,
   Plus,
   Sparkles,
   X,
   Zap,
 } from 'lucide-react'
-import { Badge, Tooltip } from '@lobehub/ui'
-import { Input } from '@lobehub/ui';
+import { TextArea, Tooltip } from '@lobehub/ui'
 import 'streamdown/styles.css'
 import { suggestionsApi, sendChatMessage, CONVERSATION_MODE, parseSseStream, type SseEvent } from '../../services/api'
 import { normalizeChatMessage } from '../../types'
-import type { ChatMessage, ModelConfig, User, GeneratedImage, ChatBlock } from '../../types'
+import type { ChatMessage, ModelConfig, User, GeneratedImage, ChatBlock, SettingsTab } from '../../types'
 import { ConversationBlocks } from '../../components/chat/ConversationBlocks'
+import './index.less'
 
 
-type SkillDef = { id: string; displayName: string; disabled: boolean; icon: React.ReactNode }
+type SkillDef = {
+  id: string
+  displayName: string
+  description: string
+  disabled: boolean
+  icon: React.ReactNode
+}
 type SkillGroup = { name: string; skills: SkillDef[] }
 
 const SKILL_GROUPS: SkillGroup[] = [
   {
     name: '文档技能',
     skills: [
-      { id: 'knowledge-base', displayName: '知识库问答', disabled: false, icon: <BookOpen size={14} /> },
-      { id: 'doc-interpret', displayName: '文档解读', disabled: true, icon: <Zap size={14} /> },
+      { id: 'knowledge-base', displayName: '知识库问答', description: '检索已接入的资料并结合内容回答', disabled: false, icon: <BookOpen size={16} /> },
+      { id: 'doc-interpret', displayName: '文档解读', description: '总结和分析你提供的文档', disabled: true, icon: <Zap size={16} /> },
     ],
   },
   {
     name: '图片技能',
     skills: [
-      { id: 'image-gen', displayName: '生图', disabled: true, icon: <Plus size={14} /> },
+      { id: 'image-gen', displayName: '生图', description: '根据文字描述生成图片', disabled: true, icon: <Plus size={16} /> },
     ],
   },
   {
     name: '自媒体',
     skills: [
-      { id: 'copy-gen', displayName: '文案生成', disabled: true, icon: <Copy size={14} /> },
-      { id: 'topic-gen', displayName: '内容选题', disabled: true, icon: <Copy size={14} /> },
+      { id: 'copy-gen', displayName: '文案生成', description: '生成适合不同平台的内容文案', disabled: true, icon: <Copy size={16} /> },
+      { id: 'topic-gen', displayName: '内容选题', description: '拓展灵感并整理内容选题', disabled: true, icon: <Sparkles size={16} /> },
     ],
   },
 ]
@@ -63,7 +71,7 @@ interface ChatPageProps {
   messages: ChatMessage[]
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   onOpenSettings: () => void
-  onSetSettingsTab: (tab: 'model' | 'profile') => void
+  onSetSettingsTab: (tab: SettingsTab) => void
   generatedImages: GeneratedImage[]
   previewIndex: number | null
   setPreviewIndex: React.Dispatch<React.SetStateAction<number | null>>
@@ -86,11 +94,12 @@ export function ChatPage({
   const [suggestions, setSuggestions] = useState<string[]>([])
   const [thinkingTool, setThinkingTool] = useState<string | null>(null)
   const convRef = useRef<HTMLDivElement>(null)
+  const composerInputRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
-    const el = convRef.current
-    if (!el) return
-    requestAnimationFrame(() => { el.scrollTop = el.scrollHeight })
+          const el = convRef.current;
+          if (!el) return;
+          requestAnimationFrame(() => { el.scrollTop = el.scrollHeight; });
   }, [chatMessages])
 
   useEffect(() => {
@@ -127,6 +136,15 @@ export function ChatPage({
                   file: s.source.split('/').pop() ?? 'unknown',
                   content: s.content,
                 }))
+              break
+            }
+          }
+          break
+        case 'tool_result':
+          for (let i = blocks.length - 1; i >= 0; i--) {
+            if (blocks[i].type === 'tool') {
+              ;(blocks[i] as Extract<ChatBlock, { type: 'tool' }>).status = ev.status as 'no_relevant_result' | 'relevant' | undefined
+              ;(blocks[i] as Extract<ChatBlock, { type: 'tool' }>).result = ev.message
               break
             }
           }
@@ -222,16 +240,13 @@ export function ChatPage({
     const handler = (e: MouseEvent) => { if (!el.contains(e.target as Node)) setSkillPanelOpen(false) }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
-  }, [])
+  }, [setSkillPanelOpen])
 
   function selectSkill(skill: SkillDef) {
     if (skill.disabled) return
     setSelectedSkill((prev) => prev?.id === skill.id ? null : { id: skill.id, displayName: skill.displayName })
     setSkillPanelOpen(false)
-    setTimeout(() => {
-      const ta = document.querySelector('textarea[placeholder="输入你的问题..."]') as HTMLTextAreaElement | null
-      ta?.focus()
-    }, 50)
+    setTimeout(() => composerInputRef.current?.focus(), 50)
   }
 
   const previewImage = previewIndex === null ? undefined : generatedImages[previewIndex]
@@ -254,7 +269,7 @@ export function ChatPage({
       window.removeEventListener('keydown', handlePreviewKeyDown)
       document.body.style.overflow = previousOverflow
     }
-  }, [previewIndex, generatedImages.length])
+  }, [previewIndex, generatedImages.length, setPreviewIndex])
 
   if (!user) return null
 
@@ -285,7 +300,7 @@ export function ChatPage({
                       <button
                         type="button"
                         className="suggestion-chip"
-                        onClick={() => { setInput(q); (document.querySelector('textarea') as HTMLTextAreaElement)?.focus() }}
+                            onClick={() => { setInput(q); composerInputRef.current?.focus() }}
                         disabled={isStreaming}
                       >
                         {q}
@@ -347,62 +362,107 @@ export function ChatPage({
       </div>
       <form className="composer" onSubmit={sendMessage}>
         <div className="input-wrap">
-          <div className="skill-input-group" ref={skillPanelRef}>
-            <button
-              type="button"
-              className={`skill-plus-btn${skillPanelOpen ? ' active' : ''}`}
-              onClick={() => setSkillPanelOpen((v) => !v)}
-              disabled={isStreaming}
-              aria-label="选择技能"
-              title="选择技能"
-            >
-              <Plus size={18} />
-            </button>
-            {skillPanelOpen && (
-              <div className="skill-panel">
-                {SKILL_GROUPS.map((group) => (
-                  <div className="skill-group" key={group.name}>
-                    <div className="skill-group-label">{group.name}</div>
-                    <div style={{ width: '100%' }}>
-                      {group.skills.map((skill) => (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          style={{ display: "flex", width: '100%', marginBottom: 2 }}
-                          className={`skill-item${skill.disabled ? ' disabled' : ''}${selectedSkill?.id === skill.id ? ' selected' : ''}`}
-                          onClick={() => selectSkill(skill)}
-                          disabled={skill.disabled}
-                          title={skill.disabled ? '暂未开放' : skill.displayName}
-                        >
-                          <span className="skill-item-icon">{skill.icon}</span>
-                          <span className="skill-item-name">{skill.displayName}</span>
-                          {skill.disabled && <span className="skill-item-lock">🔒</span>}
-                        </button>
-                      ))}
-                    </div>
+          <div className="composer-input-area">
+            <TextArea
+              ref={composerInputRef}
+              className="composer-textarea"
+              value={input}
+              variant="borderless"
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              onChange={(event) => setInput(event.currentTarget.value)}
+              onPressEnter={(event) => {
+                event.preventDefault()
+                if (input.trim() && !isStreaming) event.currentTarget.form?.requestSubmit()
+              }}
+              placeholder={selectedSkill ? `向「${selectedSkill.displayName}」提问…` : '你想聊点什么'}
+              autoFocus
+              aria-label="消息输入框"
+            />
+          </div>
+          <div className="composer-toolbar">
+            <div className="composer-toolbar-start">
+              <div className="skill-input-group" ref={skillPanelRef}>
+                <Tooltip title="选择技能">
+                  <button
+                    type="button"
+                    className={`skill-plus-btn${skillPanelOpen ? ' active' : ''}`}
+                    onClick={() => setSkillPanelOpen((v) => !v)}
+                    disabled={isStreaming}
+                    aria-label="选择技能"
+                    aria-expanded={skillPanelOpen}
+                    aria-controls="chat-skill-panel"
+                  >
+                    <Plus size={19} />
+                  </button>
+                </Tooltip>
+                {selectedSkill && (
+                  <div className="selected-skill-pill">
+                    <span>{selectedSkill.displayName}</span>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedSkill(null)}
+                      aria-label={`移除技能：${selectedSkill.displayName}`}
+                      title="移除技能"
+                    >
+                      <X size={13} />
+                    </button>
                   </div>
-                ))}
+                )}
+                {skillPanelOpen && (
+                  <div className="skill-panel" id="chat-skill-panel" aria-label="技能选择">
+                    <div className="skill-panel-heading">
+                      <div>
+                        <strong>选择能力</strong>
+                        <span>为当前对话添加专属技能</span>
+                      </div>
+                      <span className="skill-panel-count">{SKILL_GROUPS.reduce((count, group) => count + group.skills.length, 0)}</span>
+                    </div>
+                    {SKILL_GROUPS.map((group) => (
+                      <div className="skill-group" key={group.name}>
+                        <div className="skill-group-label">{group.name}</div>
+                        <div className="skill-group-items">
+                          {group.skills.map((skill) => (
+                            <button
+                              key={skill.id}
+                              type="button"
+                              className={`skill-item${skill.disabled ? ' disabled' : ''}${selectedSkill?.id === skill.id ? ' selected' : ''}`}
+                              onClick={() => selectSkill(skill)}
+                              disabled={skill.disabled}
+                              title={skill.disabled ? '即将开放' : skill.description}
+                            >
+                              <span className="skill-item-icon">{skill.icon}</span>
+                              <span className="skill-item-copy">
+                                <span className="skill-item-name">{skill.displayName}</span>
+                                <span className="skill-item-description">{skill.description}</span>
+                              </span>
+                              {skill.disabled ? (
+                                <span className="skill-item-status">即将开放</span>
+                              ) : selectedSkill?.id === skill.id ? (
+                                <Check className="skill-item-check" size={16} />
+                              ) : null}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-           )}
-         <Input
-           onChange={(event) => setInput(event.currentTarget.value)}
-           onPressEnter={() => { if (input.trim() && !isStreaming) void sendMessage({ preventDefault: () => {} } as FormEvent) }}
-
-           placeholder={selectedSkill ? `向「${selectedSkill.displayName}」提问…` : '输入你的问题...'}
-           autoFocus
-           prefix={
-             selectedSkill ? (
-               <Badge color="purple" style={{ marginRight: 8 }}>{selectedSkill.displayName}</Badge>
-             ) : undefined
-           }
-           suffix={
-             <span className="shortcut">⌘ ↵</span>
-           }
-         />
-       </div>
-       </div>
-        <div className="composer-foot">
-          <span>Enter 发送 · Shift + Enter 换行</span>
+              <span className="composer-keyboard-hint">Enter 发送 · Shift + Enter 换行</span>
+            </div>
+            <div className="composer-toolbar-end">
+              <div className="composer-toolbar-actions" />
+              <button
+                className="composer-send-button"
+                type="submit"
+                disabled={!input.trim() || isStreaming}
+                aria-label="发送消息"
+                title="发送消息"
+              >
+                {isStreaming ? <LoaderCircle className="spin" size={19} /> : <ArrowUp size={21} />}
+              </button>
+            </div>
+          </div>
         </div>
       </form>
       {previewImage && createPortal(

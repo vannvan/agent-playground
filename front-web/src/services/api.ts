@@ -18,12 +18,13 @@ export interface ChatRequest {
 // ── SSE Event types ─────────────────────────────────────────────────────────
 
 export interface SseEvent {
-  type: 'text' | 'tool' | 'sources' | 'done' | 'error' | 'clarify'
+  type: 'text' | 'tool' | 'tool_result' | 'sources' | 'done' | 'error' | 'clarify'
   content?: string
   name?: string
   args?: string
   session_id?: string
-  message?: string
+ message?: string
+  status?: string
   sources?: Array<{ source: string; content: string; score?: number }>
 }
 

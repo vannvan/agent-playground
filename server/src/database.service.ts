@@ -256,6 +256,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     try { await this.pool.query("ALTER TABLE user_chat_sessions ADD COLUMN mode VARCHAR(20) NULL AFTER title"); } catch {}
     try { await this.pool.query("ALTER TABLE user_chat_sessions ADD COLUMN skill_id VARCHAR(100) NULL AFTER mode"); } catch {}
     try { await this.pool.query("ALTER TABLE user_chat_messages ADD COLUMN mode VARCHAR(20) NULL AFTER model"); } catch {}
+    try { await this.pool.query("ALTER TABLE user_chat_sessions ADD COLUMN python_session_id VARCHAR(128) NULL AFTER skill_id"); } catch {}
   }
 
   async onModuleDestroy() {
@@ -448,7 +449,7 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
   async getUserChat(userId: number, chatId: string) {
     const pool = this.requirePool();
     const [chats] = await pool.query<RowDataPacket[]>(
-      `SELECT chat_id AS chatId, title, mode, skill_id AS skillId, created_at AS createdAt, updated_at AS updatedAt
+      `SELECT chat_id AS chatId, title, mode, skill_id AS skillId, python_session_id AS pythonSessionId, created_at AS createdAt, updated_at AS updatedAt
        FROM user_chat_sessions WHERE user_id = ? AND chat_id = ? LIMIT 1`,
       [userId, chatId],
     );
@@ -499,6 +500,14 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
     } finally {
       connection.release();
     }
+  }
+
+  async updatePythonSessionId(chatId: string, pythonSessionId: string | null): Promise<void> {
+    const pool = this.requirePool();
+    await pool.query(
+      'UPDATE user_chat_sessions SET python_session_id = ? WHERE chat_id = ?',
+      [pythonSessionId, chatId],
+    );
   }
 
   async saveUserImage(userId: number, image: { id: string; prompt: string; size: string; model: string; url: string }) {

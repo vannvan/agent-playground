@@ -11,6 +11,7 @@ class ChatReq(BaseModel):
     message: str = Field(..., min_length=1, description="用户消息")
     session_id: Optional[str] = Field(None, description="会话 ID，缺失则自动创建")
     system_prompt: Optional[str] = Field(None, description="可选：覆盖默认系统提示词")
+    history: Optional[list[dict[str, Any]]] = Field(None, description="可选：前置对话历史 [{role, content}]")
 
 
 class IngestReq(BaseModel):

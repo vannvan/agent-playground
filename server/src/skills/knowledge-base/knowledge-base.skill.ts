@@ -22,6 +22,12 @@ const ANSWER_SYSTEM_PROMPT = `你是基于内部知识库回答的助手。
 - 检索到的是代码、且用户问"能不能跑/什么意思" → 调用 explain_or_run_code
 - 检索结果足够回答时，不要调用以上任何工具，直接整合回答
 
+
+【必须遵守的工作流程】
+- 用户提问后，你必须先调用 search_knowledge_base 工具检索知识库相关内容
+- 只有当检索结果足够时，才整合检索片段回答问题；禁止直接凭训练数据作答
+- 若搜索结果为空（status=no_relevant_result），回复：知识库中没有找到与相关问题相关的信息。
+- 不要在未检索的情况下直接回答任何问题
 【示例】
 ✅ 正确（融合 + 口语化 + 直接给结论）：
 "CORS 错误通常出现在前后端域名或端口不一致时。解决方法是把前端请求的 base URL 指向后端地址，并在后端开启跨域、配置允许的 origin 列表。"
@@ -49,18 +55,19 @@ export class KnowledgeBaseSkill extends SkillBase {
 
   async *stream(
     userMessage: string,
-    _history: Array<{ role: 'user' | 'assistant'; content: string }>,
-    _userId: number,
+    history: Array<{ role: 'user' | 'assistant'; content: string }>,
+    userId: number,
+    chatId?: string,
   ): AsyncIterable<string> {
     const url = `${this.engineUrl.replace(/\/+$/, '')}/chat/stream`;
     this.logger.log(`代理请求 → ${url}`);
-
     let res: Response;
     try {
+      this.logger.log(`skill→Python: session_id=${chatId} (caller-provided) history_len=${history?.length ?? 0} msg="${userMessage.slice(0,80)}"`);
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, session_id: null, system_prompt: ANSWER_SYSTEM_PROMPT }),
+        body: JSON.stringify({ message: userMessage, session_id: chatId ?? null, system_prompt: ANSWER_SYSTEM_PROMPT, history }),
         signal: AbortSignal.timeout(120_000),
       });
     } catch (err) {
@@ -127,6 +134,14 @@ export class KnowledgeBaseSkill extends SkillBase {
             } catch {
               // 忽略
             }
+            continue;
+          }
+
+          // 完成事件：捕获 Python session_id，供 Controller 持久化
+          const doneMatch = trimmed.match(/^data:\s*\{"type"\s*:\s*"done"\s*,\s*"session_id"\s*:\s*"([^"]+)"\}/);
+          if (doneMatch) {
+            this.logger.log(`Python session_id: ${doneMatch[1]}`);
+            yield `__PY_SESSION_ID__${doneMatch[1]}`;
             continue;
           }
 

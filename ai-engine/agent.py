@@ -6,7 +6,7 @@ import logging
 import time
 from typing import Any, AsyncIterator
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, StateGraph, START
 
@@ -29,6 +29,8 @@ class AgentState(dict):
         self["messages"] = messages or []
         self["session_id"] = session_id
         self["sources"] = []
+        self["consecutive_no_relevant"] = extra.get("consecutive_no_relevant", 0)
+        self["tool_call_count"] = extra.get("tool_call_count", 0)
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
@@ -56,15 +58,34 @@ def chat_node(state: AgentState) -> dict:
 
     llm = ChatOpenAI(**llm_kwargs)
     msgs: list[Any] = list(state["messages"])
-    system_msg = SystemMessage(content=cfg.ai_system_prompt)
-    if not any(isinstance(m, SystemMessage) for m in msgs):
-        msgs.insert(0, system_msg)
+    # 强制停止协议：无论是否已有 system prompt，都确保追加
+    tool_protocol = (
+        "\n\n【检索结果处理规则】"
+        "search_knowledge_base 返回 status=relevant 时，表示已获取知识片段，"
+        "必须立即整合回答，不得再次调用任何检索工具（包括 search_recursive、ask_clarification）。"
+        "只有当返回 status=no_relevant_result 时，才回复：知识库中没有找到与相关问题相关的信息。"
+    )
+    has_tool_protocol = any(
+        "检索结果处理规则" in getattr(m, "content", "")
+        for m in msgs if hasattr(m, "content")
+    )
+    if not has_tool_protocol:
+        existing_sys = next((m for m in msgs if isinstance(m, SystemMessage)), None)
+        if existing_sys:
+            existing_sys.content = existing_sys.content + tool_protocol
+        else:
+            msgs.insert(0, SystemMessage(content=tool_protocol.lstrip()))
 
     bound = llm.bind_tools(get_tools())
     response = bound.invoke(msgs)
+    n_tc = len(response.tool_calls) if response.tool_calls else 0
+    prev_tc = state.get("tool_call_count", 0)
     logger.info("LLM 响应：role=%s tool_calls=%s",
-                response.type, len(response.tool_calls) if response.tool_calls else 0)
-    return {"messages": [response], "sources": []}
+                response.type, n_tc)
+    msgs.append(response)
+    # 最多允许 N 次工具调用，防止无限循环
+    MAX_TOOL_CALLS = get_settings().recursion_limit - 2  # 留余量给最终回复
+    return {"messages": msgs, "sources": [], "tool_call_count": prev_tc + n_tc}
 
 
 def tool_node(state: AgentState) -> dict:
@@ -90,22 +111,40 @@ def tool_node(state: AgentState) -> dict:
                 logger.exception("工具 %s 执行异常", tc["name"])
                 content = f"工具执行出错: {e}"
 
-        responses.append(AIMessage(content=content, additional_kwargs={"tool_call_id": tc["id"]}))
+        responses.append(ToolMessage(content=content, tool_call_id=tc["id"]))
 
         if tc["name"] == "search_knowledge_base":
             try:
-                args = json.loads(tc["args"]) if isinstance(tc["args"], str) else tc["args"]
-                query = args.get("query", "")
-                from retriever import retriever
-                all_sources.extend(retriever(query, k=args.get("top_k", 4)))
-            except Exception:
+                payload = json.loads(content)
+                if payload.get("status") == "no_relevant_result":
+                    prev_count = state.get("consecutive_no_relevant", 0)
+                    state["consecutive_no_relevant"] = prev_count + 1
+                else:
+                    state["consecutive_no_relevant"] = 0
+                all_sources.extend(payload.get("results", []))
+            except (TypeError, json.JSONDecodeError):
                 pass
 
-    return {"messages": responses, "sources": all_sources}
+    msgs = list(state["messages"]) + responses
+    return {"messages": msgs, "sources": all_sources, "consecutive_no_relevant": state.get("consecutive_no_relevant", 0)}
 
 
 def should_continue(state: AgentState) -> str:
     last = state["messages"][-1]
+    if isinstance(last, ToolMessage):
+        try:
+            if json.loads(last.content).get("status") == "no_relevant_result":
+                return END
+        except (TypeError, json.JSONDecodeError):
+            pass
+    # 连续无结果则强制停止，防止无限循环
+    consecutive = state.get("consecutive_no_relevant", 0)
+    if consecutive >= 3:
+        return END
+    # 总工具调用次数上限
+    max_tc = get_settings().recursion_limit - 2
+    if state.get("tool_call_count", 0) >= max_tc:
+        return END
     tool_calls = getattr(last, "tool_calls", []) or []
     if tool_calls:
         return "tools"
@@ -144,32 +183,82 @@ async def run_chat_stream(
     session_id: str,
     user_message: str,
     system_prompt: str | None = None,
+    history: list[dict[str, str]] | None = None,
 ) -> AsyncIterator[dict]:
     """流式对话入口，yield SSE 事件 dict。"""
     start_ts = time.time()
+    logger.info("run_chat_stream: session_id=%s msg_len=%d history_len=%s system_prompt_set=%s",
+                session_id, len(user_message), len(history) if history else None, bool(system_prompt))
     graph = get_graph()
 
     # 使用传入的 system_prompt，否则用配置中的默认值
     cfg = get_settings()
     effective_system = system_prompt if system_prompt else cfg.ai_system_prompt
-    msgs: list[Any] = [SystemMessage(content=effective_system), HumanMessage(content=user_message)]
+    # 使用传入历史或从内存加载
+    msgs: list[Any] = []
+    if history:
+        for h in history:
+            role = h.get("role", "user")
+            content_h = h.get("content", "")
+            if not content_h:
+                continue
+            if role == "system":
+                msgs.append(SystemMessage(content=content_h))
+            elif role == "user":
+                msgs.append(HumanMessage(content=content_h))
+            elif role == "assistant":
+                msgs.append(AIMessage(content=content_h))
+    else:
+        mem = get_messages(session_id)
+        for m in mem:
+            role = m.get("role", "user")
+            content_m = m.get("content", "")
+            if not content_m:
+                continue
+            if role == "system":
+                msgs.append(SystemMessage(content=content_m))
+            elif role == "user":
+                msgs.append(HumanMessage(content=content_m))
+            elif role == "assistant":
+                msgs.append(AIMessage(content=content_m))
+    
+    # 注入系统提示（优先用传入值，其次用默认）
+    effective_system = system_prompt or cfg.ai_system_prompt
+    if not any(isinstance(m, SystemMessage) for m in msgs):
+        msgs.insert(0, SystemMessage(content=effective_system))
+    
+    # 追加当前用户消息
+    msgs.append(HumanMessage(content=user_message))
     state = AgentState(session_id=session_id, messages=msgs)
     config = _make_config()
 
     all_sources = []
     all_texts = []
+    no_relevant_result = False
+    no_relevant_tool_name = "search_knowledge_base"
     prev_tool_call_ids = set()
-    
+    prev_text_message_ids = set()
+    last_processed_count = 0
     try:
         async for chunk in graph.astream(state, config=config, stream_mode="values"):
             messages = chunk.get("messages", [])
             
-            # 聚合 sources
+            # 聚合 sources（取最新值）
             if "sources" in chunk and chunk["sources"]:
                 all_sources = chunk["sources"]
             
-            for msg in messages:
-                if isinstance(msg, AIMessage):
+            # 只处理本轮新增的消息，避免同一消息多次触发事件
+            for msg in messages[last_processed_count:]:
+                last_processed_count += 1
+                if isinstance(msg, ToolMessage):
+                    try:
+                        payload = json.loads(msg.content)
+                        if payload.get("status") == "no_relevant_result":
+                            no_relevant_result = True
+                            yield {"type": "tool_result", "name": no_relevant_tool_name, "status": "no_relevant_result", "message": payload.get("message", "知识库中没有找到相关内容。")}
+                    except (TypeError, json.JSONDecodeError):
+                        pass
+                elif isinstance(msg, AIMessage):
                     # 工具调用事件（去重）
                     tool_calls = getattr(msg, "tool_calls", []) or []
                     for tc in tool_calls:
@@ -180,11 +269,16 @@ async def run_chat_stream(
                                    "args": json.dumps(tc["args"], ensure_ascii=False)}
                     
                     # 文本内容事件
-                    if msg.content:
+                    msg_id = getattr(msg, "id", None)
+                    if msg.content and msg_id not in prev_text_message_ids:
+                        if msg_id is not None:
+                            prev_text_message_ids.add(msg_id)
                         all_texts.append(msg.content)
 
-        # 发送最终回复
-        if all_texts:
+        # 发送最终回复：no_relevant_result 时优先显示提示，避免和历史回答拼接
+        if no_relevant_result:
+            yield {"type": "text", "content": "知识库中没有找到与相关问题相关的信息。"}
+        elif all_texts:
             yield {"type": "text", "content": "".join(all_texts)}
         
         # 发送 sources

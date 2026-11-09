@@ -1,5 +1,5 @@
 import { AlertCircle } from 'lucide-react'
-import type { ChatBlock } from '../../types'
+import type { ChatBlock } from '../../../types'
 
 export function ClarifyBlock({ block, onContinue }: {
   block: Extract<ChatBlock, { type: 'clarify' }>

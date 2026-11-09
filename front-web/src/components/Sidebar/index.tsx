@@ -1,6 +1,8 @@
 import { LogOut, MessageCircle, PenLine, Plus, Sparkles, Trash2 } from 'lucide-react'
 import { Avatar, Tooltip } from '@lobehub/ui'
-import type { ChatSession, RewriteHistoryItem, User } from '../../types'
+import type { ChatSession, RewriteHistoryItem, SettingsTab, User } from '../../types'
+import { useNavigate  } from 'react-router-dom'
+import './index.less'
 
 interface SidebarProps {
   user: User | null
@@ -17,7 +19,7 @@ interface SidebarProps {
   onCreateRewrite: () => void
   onOpenSettings: () => void
   onSignOut: () => void
-  onSetSettingsTab: (tab: 'model' | 'profile') => void
+  onSetSettingsTab: (tab: SettingsTab) => void
 }
 
 export function Sidebar({
@@ -25,6 +27,7 @@ export function Sidebar({
   onSelectChat, onDeleteChat, onSelectRewrite, onCreateChat, onCreateRewrite,
   onOpenSettings, onSignOut, onSetSettingsTab,
 }: SidebarProps) {
+  const navigate = useNavigate();
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -44,11 +47,7 @@ export function Sidebar({
         <button type="button" className={`mode-link${mode === 'image' ? ' active' : ''}`} onClick={() => setMode('image')} >
           <span>🎨</span><span>生图</span>
         </button>
-        <button type="button" className='mode-link' onClick={
-          // 跳转到润色页面
-          () => { window.location.href = '/rewrite' }
-        }
-       >
+        <button type="button" className='mode-link' onClick={() => navigate('/review')}>
           <span>📚</span><span>润色</span>
         </button>
       </nav>
@@ -104,7 +103,7 @@ export function Sidebar({
       </section>}
 
       <div className="sidebar-bottom">
-        <Tooltip title="模型配置" placement="top">
+        <Tooltip title="打开设置" placement="top">
           <Avatar
             className="user-avatar-btn"
             size={38}

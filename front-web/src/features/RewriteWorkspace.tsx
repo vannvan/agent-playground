@@ -1,3 +1,4 @@
+import './RewriteWorkspace.less'
 import { lazy, Suspense, useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { createPortal } from 'react-dom'

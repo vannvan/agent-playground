@@ -19,18 +19,18 @@ src/
 ├── components/      # 公共通用组件（跨业务、高度复用）
 │   ├── Button/
 │   │   ├── index.tsx
-│   │   ├── style.module.css
+│   │   ├── style.less
 │   │   └── types.ts
 │   └── ...
 ├── config/          # 全局配置文件（常量、环境配置、路由白名单等）
 ├── hooks/           # 全局自定义 React/Vue Hooks (useXxx)
 ├── layouts/         # 页面布局组件（BasicLayout, BlankLayout 等）
 ├── pages/ 或 views/ # 页面级路由组件（按业务模块划分）
-│   ├── dashboard/
+│   ├── Dashboard/
 │   │   ├── components/  # 仅该页面使用的私有子组件
 │   │   ├── hooks/       # 仅该页面使用的私有 Hooks
 │   │   ├── index.tsx    # 页面入口
-│   │   └── style.module.css
+│   │   └── style.less
 │   └── ...
 ├── router/          # 路由配置
 ├── services/ 或 api/ # 网络请求与接口定义层（按模块划分，如 user.ts, order.ts）
@@ -43,11 +43,29 @@ src/
 ## 3. 严格规则与边界 (Do / Ask / Never)
 
 ### 必须做 (DO)
-1. **就近原则 (Colocation)**：如果一个子组件、Hooks 或类型**只**属于某一个页面（Page），必须放在该页面目录下的 `components/` 或 `hooks/` 中，**严禁**直接丢到全局 `src/components` 或 `src/hooks` 里。
-2. **命名规范**：
+1. **组件目录命名强制要求**：每个组件都必须遵循“组件名目录 + index 文件 + 同名样式文件”的组织方式，示例：
+   ```text
+   src/components/chat/ToolCallBlock/
+   ├── index.tsx
+   ├── index.less
+   └── index.test.tsx   # 需要时可选
+   ```
+   以及：
+   ```text
+   src/pages/ChatPage/
+   ├── index.tsx
+   ├── index.less
+   └── components/
+       └── SomeChild/
+           ├── index.tsx
+           └── index.less
+   ```
+2. **就近原则 (Colocation)**：如果一个子组件、Hooks 或类型**只**属于某一个页面（Page），必须放在该页面目录下的 `components/` 或 `hooks/` 中，**严禁**直接丢到全局 `src/components` 或 `src/hooks` 里。
+3. **命名规范**：
    - 文件夹统一使用 **kebab-case**（如 `user-profile/`）或 **PascalCase**（组件目录视团队习惯，推荐和组件名一致如 `UserProfile/`）。
    - 组件入口文件统一命名为 `index.tsx`（React）或 `index.vue`（Vue）。
-3. **分层清晰**：
+   - 样式文件统一命名为 `index.less` / `index.css` / `style.less`，但在本项目中优先使用 `index.less` 与组件目录同名。
+4. **分层清晰**：
    - `services/` 中只写请求逻辑和数据转换，不写复杂 UI 逻辑。
    - `utils/` 中必须是无副作用的纯函数（Pure Functions）。
 
@@ -56,16 +74,28 @@ src/
 
 ### 绝对禁止 (NEVER)
 - ❌ **禁止**在 `src/` 根目录下随意平铺孤立的文件（如直接在 `src/` 下面建 `helper2.js`、`temp.ts`）。
+- ❌ **禁止**继续使用 `Component.tsx + Component.css` 这种散列文件命名方式；所有组件必须用目录形式组织，如 `Component/index.tsx` + `Component/index.less`。
 - ❌ **禁止**跨层级直接混用业务逻辑与 UI（例如在公共组件里直接硬编码调用特定的业务 API）。
 
 ## 4. 输出示例 (Output Example)
 当被要求“建一个用户个人中心页面”时，AI 应该生成的目录树：
 ```text
-src/pages/user-profile/
+src/pages/UserProfile/
 ├── components/
-│   └── AvatarEditor.tsx
+│   └── AvatarEditor/
+│       ├── index.tsx
+│       └── index.less
 ├── hooks/
 │   └── useUserProfile.ts
 ├── index.tsx
-└── style.module.css
+├── index.less
+└── types.ts
+```
+
+如果被要求“创建一个 ToolCallBlock 组件”，AI 必须生成：
+```text
+src/components/chat/ToolCallBlock/
+├── index.tsx
+├── index.less
+└── types.ts   # 需要时
 ```

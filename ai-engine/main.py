@@ -37,7 +37,8 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 50)
     logger.info("Python AI Engine 启动")
     logger.info("模型：%s  |  BaseURL：%s", get_settings().ai_model, get_settings().ai_base_url or "(default)")
-    logger.info("向量库文档数：%d", collection_count())
+    # 向量库文档数在首次检索时初始化，避免启动阻塞
+    pass
     logger.info("可用工具：%s", get_tool_names())
     logger.info("=" * 50)
     yield
@@ -148,7 +149,7 @@ async def suggestions():
 async def chat_stream(req: ChatReq):
     session_id = req.session_id or create_session()
     return StreamingResponse(
-        event_stream(session_id, req.message, req.system_prompt),
+        event_stream(session_id, req.message, req.system_prompt, req.history),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -157,9 +158,10 @@ async def chat_stream(req: ChatReq):
     )
 
 
-async def event_stream(session_id: str, message: str, system_prompt: str | None = None):
+async def event_stream(session_id: str, message: str, system_prompt: str | None = None, history: list[dict[str, str]] | None = None):
     """SSE 生成器，逐事件 yield。"""
-    async for ev in run_chat_stream(session_id, message, system_prompt):
+    logger.info("event_stream: session_id=%s message_len=%d history_len=%s", session_id, len(message), len(history) if history else None)
+    async for ev in run_chat_stream(session_id, message, system_prompt, history):
         yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
 

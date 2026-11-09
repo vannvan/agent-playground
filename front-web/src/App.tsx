@@ -1,51 +1,82 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AlertTriangle, Bell, CheckCircle2, Info, LoaderCircle, Sparkles, X } from 'lucide-react'
+import './styles/App.less'
 import { AuthCard } from './components/AuthCard'
 import { SettingsPanel } from './components/SettingsPanel'
 import { Sidebar } from './components/Sidebar'
 import { useWorkspace } from './hooks/useWorkspace'
 import { announcementsApi, chatsApi } from './services/api'
 import { normalizeChatMessage } from './types'
-import type { SystemAnnouncement, ChatMessage } from './types'
+import type { SystemAnnouncement, ChatMessage, SettingsTab } from './types'
 import { ChatPage } from './pages/ChatPage'
 import { ImagePage } from './pages/ImagePage'
 import { RewritePage } from './pages/RewritePage'
-import './styles/App.less'
+import { confirmModal ,ModalHost} from '@lobehub/ui'
 
-const DEFAULT_CONFIG = { apiKey: '', baseUrl: '', textModel: '', imageModel: '', videoModel: '', hasApiKey: false } as const
+const DEFAULT_CONFIG = {
+  apiKey: '',
+  baseUrl: '',
+  textModel: '',
+  imageModel: '',
+  videoModel: '',
+  hasApiKey: false,
+} as const
 
 function App() {
   const navigate = useNavigate()
   const {
-    user, isAuthLoading,
-    config, setConfig, draftConfig, setDraftConfig,
-    chats, setChats, announcements, setAnnouncements, rewrites, setRewrites,
-    activeRewriteId, setActiveRewriteId,
-    generatedImages, setGeneratedImages,
-    expandedPromptIds, setExpandedPromptIds,
-    previewIndex, setPreviewIndex,
-    imageError, setImageError,
+    user,
+    isAuthLoading,
+    config,
+    setConfig,
+    draftConfig,
+    setDraftConfig,
+    chats,
+    setChats,
+    announcements,
+    setAnnouncements,
+    rewrites,
+    setRewrites,
+    activeRewriteId,
+    setActiveRewriteId,
+    generatedImages,
+    setGeneratedImages,
+    expandedPromptIds,
+    setExpandedPromptIds,
+    previewIndex,
+    setPreviewIndex,
+    imageError,
+    setImageError,
     signOut,
   } = useWorkspace()
 
   const [mode, setMode] = useState<'chat' | 'image' | 'rewrite'>('chat')
-  const [selectedSkill, setSelectedSkill] = useState<{ id: string; displayName: string } | null>(null)
+  const [selectedSkill, setSelectedSkill] = useState<{ id: string; displayName: string } | null>(
+    null,
+  )
   const [activeChatId, setActiveChatId] = useState('')
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [isStreaming, setIsStreaming] = useState(false)
   const [input, setInput] = useState('')
   const [error, setError] = useState('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
-  const [settingsTab, setSettingsTab] = useState<'model' | 'profile'>('model')
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>('model')
   const [configError, setConfigError] = useState('')
   const [connectionTestBusy, setConnectionTestBusy] = useState(false)
-  const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; durationMs?: number; message: string } | null>(null)
+  const [connectionTestResult, setConnectionTestResult] = useState<{
+    success: boolean
+    durationMs?: number
+    message: string
+  } | null>(null)
 
   useEffect(() => {
     if (!user) return
     const timer = window.setInterval(() => {
-      announcementsApi.list().then(setAnnouncements).catch(() => {})
+      announcementsApi
+        .list()
+        .then(setAnnouncements)
+        .catch(() => {})
     }, 60_000)
     return () => window.clearInterval(timer)
   }, [user, setAnnouncements])
@@ -76,22 +107,32 @@ function App() {
   }
 
   async function deleteChat(chatId: string) {
-    if (!window.confirm('确定删除这条会话吗？删除后无法恢复。')) return
-    try {
-      await chatsApi.delete(chatId)
-      const remaining = chats.filter((chat) => chat.chatId !== chatId)
-      setChats(remaining)
-      if (activeChatId !== chatId) return
-      const nextChat = remaining[0]
-      if (nextChat) {
-        await openChat(nextChat.chatId)
-      } else {
-        setActiveChatId('')
-        setChatMessages([])
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '删除会话失败')
-    }
+    // if (!window.confirm('确定删除这条会话吗？删除后无法恢复。')) return
+    confirmModal({
+      title: '确认删除?',
+      content: '删除后无法恢复该会话.',
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          await chatsApi.delete(chatId)
+          const remaining = chats.filter((chat) => chat.chatId !== chatId)
+          setChats(remaining)
+          if (activeChatId !== chatId) return
+          const nextChat = remaining[0]
+          if (nextChat) {
+            await openChat(nextChat.chatId)
+          } else {
+            setActiveChatId('')
+            setChatMessages([])
+          }
+        } catch (e) {
+          setError(e instanceof Error ? e.message : '删除会话失败')
+        }
+      },
+      onCancel: () => {},
+    })
   }
 
   async function dismissAnnouncement(announcement: SystemAnnouncement) {
@@ -109,7 +150,11 @@ function App() {
   }
 
   async function saveConfig() {
-    if (!draftConfig.baseUrl.trim() || !draftConfig.textModel.trim() || !(draftConfig.apiKey.trim() || draftConfig.hasApiKey)) {
+    if (
+      !draftConfig.baseUrl.trim() ||
+      !draftConfig.textModel.trim() ||
+      !(draftConfig.apiKey.trim() || draftConfig.hasApiKey)
+    ) {
       setConfigError('请填写 API Key、Base URL 和文本模型名称')
       return
     }
@@ -145,9 +190,16 @@ function App() {
         textModel: draftConfig.textModel,
       })
       if (result.message) throw new Error(result.message)
-      setConnectionTestResult({ success: result.success, message: result.message, durationMs: result.durationMs })
+      setConnectionTestResult({
+        success: result.success,
+        message: result.message,
+        durationMs: result.durationMs,
+      })
     } catch (e) {
-      setConnectionTestResult({ success: false, message: e instanceof Error ? e.message : '连通性测试失败' })
+      setConnectionTestResult({
+        success: false,
+        message: e instanceof Error ? e.message : '连通性测试失败',
+      })
     } finally {
       setConnectionTestBusy(false)
     }
@@ -159,12 +211,16 @@ function App() {
   }
 
   if (isAuthLoading) {
-    return <main className="auth-screen">
-      <div className="auth-loading">
-        <span className="brand-mark"><Sparkles size={18} /></span>
-        <LoaderCircle className="spin" size={18} /> 正在确认登录状态…
-      </div>
-    </main>
+    return (
+      <main className="auth-screen">
+        <div className="auth-loading">
+          <span className="brand-mark">
+            <Sparkles size={18} />
+          </span>
+          <LoaderCircle className="spin" size={18} /> 正在确认登录状态…
+        </div>
+      </main>
+    )
   }
 
   if (!user) {
@@ -173,6 +229,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <ModalHost />
       <Sidebar
         user={user}
         mode={mode}
@@ -186,36 +243,64 @@ function App() {
         onSelectRewrite={openRewrite}
         onCreateChat={createChat}
         onCreateRewrite={() => setActiveRewriteId('')}
-        onOpenSettings={() => { setIsSettingsOpen(true); setSettingsTab('model') }}
-        onSignOut={() => { void signOut(); navigate('/') }}
+        onOpenSettings={() => {
+          setIsSettingsOpen(true)
+          setSettingsTab('model')
+        }}
+        onSignOut={() => {
+          void signOut()
+          navigate('/')
+        }}
         onSetSettingsTab={setSettingsTab}
       />
       <section className="chat-panel">
         <header className="topbar">
           <div>
-            <span className="eyebrow">AI CREATIVE STUDIO</span>
+            {/* <span className="eyebrow">AI CREATIVE STUDIO</span> */}
             <h2>{mode === 'chat' ? '豆奶一下' : mode === 'image' ? 'AI 生图' : 'AI 仿写'}</h2>
           </div>
-          <div className="connection">
+          {/* <div className="connection">
             <span className="status-dot" /> Agnes AI <span className="online">READY</span>
-          </div>
+          </div> */}
         </header>
 
-        {announcements.length > 0 && <section className="system-announcements" aria-label="系统公告" aria-live="polite">
-          {announcements.map((announcement) => {
-            const AnnouncementIcon = announcement.type === 'urgent' || announcement.type === 'warning'
-              ? AlertTriangle : announcement.type === 'success' ? CheckCircle2 : announcement.type === 'info' ? Info : Bell
-            return <article className={`system-announcement ${announcement.type}`} key={announcement.id}>
-              <span className="announcement-icon"><AnnouncementIcon size={17} /></span>
-              <div className="announcement-copy"><strong>{announcement.title}</strong><p>{announcement.message}</p></div>
-              {announcement.isDismissible && (
-                <button type="button" onClick={() => void dismissAnnouncement(announcement)} aria-label={`关闭公告：${announcement.title}`}>
-                  <X size={16} />
-                </button>
-              )}
-            </article>
-          })}
-        </section>}
+        {announcements.length > 0 && (
+          <section className="system-announcements" aria-label="系统公告" aria-live="polite">
+            {announcements.map((announcement) => {
+              const AnnouncementIcon =
+                announcement.type === 'urgent' || announcement.type === 'warning'
+                  ? AlertTriangle
+                  : announcement.type === 'success'
+                    ? CheckCircle2
+                    : announcement.type === 'info'
+                      ? Info
+                      : Bell
+              return (
+                <article
+                  className={`system-announcement ${announcement.type}`}
+                  key={announcement.id}
+                >
+                  <span className="announcement-icon">
+                    <AnnouncementIcon size={17} />
+                  </span>
+                  <div className="announcement-copy">
+                    <strong>{announcement.title}</strong>
+                    <p>{announcement.message}</p>
+                  </div>
+                  {announcement.isDismissible && (
+                    <button
+                      type="button"
+                      onClick={() => void dismissAnnouncement(announcement)}
+                      aria-label={`关闭公告：${announcement.title}`}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                </article>
+              )
+            })}
+          </section>
+        )}
 
         {mode === 'chat' && (
           <ChatPage
@@ -233,7 +318,10 @@ function App() {
             setInput={setInput}
             messages={chatMessages}
             setMessages={setChatMessages}
-            onOpenSettings={() => { setIsSettingsOpen(true); setSettingsTab('model') }}
+            onOpenSettings={() => {
+              setIsSettingsOpen(true)
+              setSettingsTab('model')
+            }}
             onSetSettingsTab={setSettingsTab}
             generatedImages={generatedImages}
             previewIndex={previewIndex}
@@ -252,7 +340,10 @@ function App() {
             setPreviewIndex={setPreviewIndex}
             imageError={imageError}
             setImageError={setImageError}
-            onOpenSettings={() => { setIsSettingsOpen(true); setSettingsTab('model') }}
+            onOpenSettings={() => {
+              setIsSettingsOpen(true)
+              setSettingsTab('model')
+            }}
             onSetSettingsTab={setSettingsTab}
           />
         )}
@@ -262,7 +353,10 @@ function App() {
             activeRewriteId={activeRewriteId}
             setRewrites={setRewrites}
             setActiveRewriteId={setActiveRewriteId}
-            onOpenSettings={() => { setIsSettingsOpen(true); setSettingsTab('model') }}
+            onOpenSettings={() => {
+              setIsSettingsOpen(true)
+              setSettingsTab('model')
+            }}
             onSetSettingsTab={setSettingsTab}
           />
         )}
@@ -275,7 +369,11 @@ function App() {
           connectionTestBusy={connectionTestBusy}
           isSettingsOpen={isSettingsOpen}
           settingsTab={settingsTab}
-          onClose={() => { setDraftConfig(config); setConfigError(''); setIsSettingsOpen(false) }}
+          onClose={() => {
+            setDraftConfig(config)
+            setConfigError('')
+            setIsSettingsOpen(false)
+          }}
           onUpdateConfig={updateConfig}
           onSaveConfig={saveConfig}
           onTestConnection={testModelConnection}

@@ -13,7 +13,8 @@ import {
 import { useNavigate } from 'react-router-dom'
 import Select from '../../components/Select'
 import { imagesApi } from '../../services/api'
-import type { GeneratedImage, ModelConfig, User } from '../../types'
+import type { GeneratedImage, ModelConfig, SettingsTab, User } from '../../types'
+import './index.less'
 
 interface ImagePageProps {
   user: User | null
@@ -27,7 +28,7 @@ interface ImagePageProps {
   imageError: string
   setImageError: React.Dispatch<React.SetStateAction<string>>
   onOpenSettings: () => void
-  onSetSettingsTab: (tab: 'model' | 'profile') => void
+  onSetSettingsTab: (tab: SettingsTab) => void
 }
 
 export function ImagePage({

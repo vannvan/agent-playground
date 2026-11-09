@@ -1,0 +1,88 @@
+.tool-call-block {
+  margin: 8px 0;
+}
+
+.tool-call-header {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid #d4daf0;
+  border-radius: 8px;
+  color: #252b45;
+  background: rgba(120, 141, 240, 0.04);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+
+  &:hover:not(:disabled) {
+    border-color: #c3cbea;
+    background: rgba(120, 141, 240, 0.07);
+  }
+
+  &:disabled {
+    cursor: default;
+    opacity: 0.7;
+  }
+}
+
+.tool-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.tool-args {
+  max-width: 260px;
+  overflow: hidden;
+  color: #727895;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-call-header.loading .spin {
+  animation: spin 1s linear infinite;
+}
+
+.chevron {
+  transition: transform 0.2s;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.tool-sources {
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: 1px solid #d4daf0;
+  border-top: 0;
+  border-radius: 0 0 8px 8px;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.tool-source-item {
+  margin-bottom: 8px;
+}
+
+.tool-source-item:last-child {
+  margin-bottom: 0;
+}
+
+.tool-source-file {
+  display: block;
+  margin-bottom: 2px;
+  color: #788df0;
+  font: 600 11px 'JetBrains Mono', monospace;
+}
+
+.tool-source-content {
+  margin: 0;
+  color: #727895;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

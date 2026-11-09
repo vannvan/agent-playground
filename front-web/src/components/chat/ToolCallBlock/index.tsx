@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { ChevronRight, Search, LoaderCircle } from 'lucide-react'
-import type { ChatBlock } from '../../types'
+import type { ChatBlock } from '../../../types'
 
 const TOOL_LABELS: Record<string, string> = {
   search_knowledge_base: '🔍 检索知识库',
@@ -32,6 +32,7 @@ export function ToolCallBlock({ block }: { block: Extract<ChatBlock, { type: 'to
           <Search size={13} />
         )}
         <span className="tool-label">{label}</span>
+        {block.status === 'no_relevant_result' && <span className="tool-result-empty">未找到相关内容</span>}
         {!block.loading && block.args && (
           <span className="tool-args">{block.args.slice(0, 80)}{block.args.length > 80 ? '…' : ''}</span>
         )}

@@ -2,6 +2,7 @@ import { Sparkles, LoaderCircle } from 'lucide-react'
 import { useState } from 'react'
 import { authApi } from '../../services/api'
 import type { User } from '../../types'
+import './index.less'
 
 interface AuthCardProps {
   onLogin: (user: User) => void

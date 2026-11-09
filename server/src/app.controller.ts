@@ -176,12 +176,43 @@ export class AppController {
 
     try {
       this.logger.log(`mode=${body.mode} resolvedSkillId=${resolvedSkillId} message=${userMessage.slice(0,50)}`);
+      this.logger.log(`about to enter try block, user=${user.id} chatId=${chatId}`);
       this.logger.log(`registered skills: ${this.skillRegistry.getAll().map(s => s.id).join(', ')}`);
       if (body.mode === 'skill' && resolvedSkillId) {
         const skill = this.skillRegistry.get(resolvedSkillId);
         this.logger.log(`skill lookup result: ${skill ? skill.id : 'NOT FOUND'}`);
         if (skill) {
-          await finishStream(skill.stream(userMessage, history, user.id));
+          // skill 模式使用独立 Python session，与 plain chat 隔离
+          const skillPySessionId = `skill_${chatId}`;
+          let pySessionId: string | null = null;
+          for await (const chunk of skill.stream(userMessage, history, user.id, skillPySessionId)) {
+            if (chunk.startsWith('__PY_SESSION_ID__')) {
+              pySessionId = chunk.slice('__PY_SESSION_ID__'.length);
+              continue;
+            }
+            if (chunk.startsWith('__TOOL_CALL__') || chunk.startsWith('__SOURCES__')) {
+              const meta = JSON.parse(chunk.slice(1));
+              if (chunk.startsWith('__TOOL_CALL__')) {
+                response.write(`event: tool\ndata: ${JSON.stringify(meta)}\n\n`);
+              } else {
+                response.write(`event: sources\ndata: ${JSON.stringify(meta)}\n\n`);
+              }
+              continue;
+            }
+            response.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
+            answer += chunk;
+          }
+          if (pySessionId) {
+            await this.database.updatePythonSessionId(skillPySessionId, pySessionId);
+          }
+          await this.database.appendUserChatExchange(
+            user.id, chatId, rawMessage, answer, privateConfig.textModel,
+            body.mode, resolvedSkillId,
+          );
+          await this.database.recordUserGenerationRequest(
+            requestId, user.id, 'chat', Date.now() - startedAt, 'success',
+          );
+          response.write('event: done\ndata: {}\n\n');
           return response.end();
         }
         // 技能未注册，降级为普通聊天
@@ -189,6 +220,7 @@ export class AppController {
 
       // 默认：转发到 Python ai-engine 纯 LLM 流
       let plainSessionId = chatId;
+      this.logger.log(`calling streamPlainChat chatId=${chatId} msg=${userMessage.slice(0,30)}`);
       for await (const ev of this.aiEngine.streamPlainChat(chatId, userMessage)) {
         if (ev.type === 'text' && ev.content) {
           response.write(`data: ${JSON.stringify({ content: ev.content })}\n\n`);
@@ -196,13 +228,19 @@ export class AppController {
         } else if (ev.type === 'tool') {
           // 透传工具调用事件，前端展示"AI 正在检索..."
           response.write(`event: tool\ndata: ${JSON.stringify({ name: ev.name, args: ev.args })}\n\n`);
-        } else if (ev.type === 'sources') {
-          response.write(`event: sources\ndata: ${JSON.stringify({ sources: ev.sources ?? [] })}\n\n`);
+       } else if (ev.type === 'sources') {
+         response.write(`event: sources\ndata: ${JSON.stringify({ sources: ev.sources ?? [] })}\n\n`);
+        } else if (ev.type === 'tool_result') {
+          response.write(`event: tool_result\ndata: ${JSON.stringify({ name: ev.name, status: ev.status, message: ev.message })}\n\n`);
         } else if (ev.type === 'done') {
           plainSessionId = ev.session_id ?? chatId;
         } else if (ev.type === 'error') {
           throw new Error(ev.message ?? 'AI Engine 返回错误');
         }
+      }
+      // 保存 plain 模式返回的 Python session_id，供后续 skill 复用
+      if (plainSessionId !== chatId) {
+        await this.database.updatePythonSessionId(chatId, plainSessionId);
       }
       await this.database.appendUserChatExchange(
         user.id, chatId, rawMessage, answer, 'agnes-2.5-flash',

@@ -18,7 +18,7 @@ export interface SourceItem { file: string; content: string }
  */
 export type ChatBlock =
   | { type: 'text'; content: string }
-  | { type: 'tool'; tool: string; args: string; result?: string; sources?: SourceItem[]; loading?: boolean }
+  | { type: 'tool'; tool: string; args: string; result?: string; sources?: SourceItem[]; status?: 'relevant' | 'no_relevant_result'; loading?: boolean }
   | { type: 'clarify'; question: string; pending: boolean }
 
 export interface ChatMessage {
@@ -43,5 +43,6 @@ export interface SystemAnnouncement {
 }
 export interface GeneratedImage { id: string; url: string; prompt: string }
 export type WorkspaceMode = 'chat' | 'image' | 'rewrite'
+export type SettingsTab = 'model' | 'theme' | 'personalization'
 export type SkillDef = { id: string; displayName: string; disabled: boolean; icon: React.ReactNode }
 export type SkillGroup = { name: string; skills: SkillDef[] }

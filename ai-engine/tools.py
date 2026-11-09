@@ -1,6 +1,7 @@
 """tools.py — 工具注册表（统一 @tool 集合入口）"""
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Optional
 
@@ -20,18 +21,28 @@ _user_prefs: dict[str, str] = {}
 def search_knowledge_base(query: str, top_k: int = 6) -> str:
     """从内部知识库中检索与问题最相关的内容，返回格式化文本。
 
+    【重要使用规则】这是一次性工具：调用后必须立即整合结果回答问题，
+    不得再次调用本工具或其他检索工具（search_recursive、ask_clarification等）。
+    仅当返回 status=no_relevant_result 时才可继续思考其他策略。
+
     Args:
         query: 检索关键词或问题。
         top_k: 返回最多几条结果，默认 6。
 
     Returns:
-        格式化检索结果，每条含来源文件与类型前缀，供 LLM 整合回答。
+        JSON格式：{"status":"relevant"|"no_relevant_result", "result_count":N, ...}
+        result_count > 0 时必须停止检索，直接整合回答。
     """
     logger.info("工具调用 search_knowledge_base: %s (top_k=%d)", query, top_k)
     results = retrieve(query, k=top_k)
     if not results:
-        return "知识库中未找到相关内容。"
-    return "\n\n".join(r["content"] for r in results)
+        return json.dumps({"status": "no_relevant_result", "query": query, "message": "知识库中没有找到与该问题足够相关的内容。", "results": []}, ensure_ascii=False)
+    return json.dumps({
+        "status": "relevant",
+        "result_count": len(results),
+        "query": query,
+        "results": [{"content": r["formatted"], "source": r["source"], "kind": r["kind"], "score": r["score"], "matched_by": r["channel"]} for r in results],
+    }, ensure_ascii=False)
 
 
 # ---------- ReAct 增强工具 ----------

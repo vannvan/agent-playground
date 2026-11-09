@@ -1,5 +1,5 @@
 import { RewriteWorkspace } from '../../features/RewriteWorkspace'
-import type { RewriteHistoryItem } from '../../types'
+import type { RewriteHistoryItem, SettingsTab } from '../../types'
 
 interface RewritePageProps {
   rewrites: RewriteHistoryItem[]
@@ -7,7 +7,7 @@ interface RewritePageProps {
   setRewrites: React.Dispatch<React.SetStateAction<RewriteHistoryItem[]>>
   setActiveRewriteId: React.Dispatch<React.SetStateAction<string>>
   onOpenSettings: () => void
-  onSetSettingsTab: (tab: 'model' | 'profile') => void
+  onSetSettingsTab: (tab: SettingsTab) => void
 }
 
 export function RewritePage({
