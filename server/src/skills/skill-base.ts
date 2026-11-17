@@ -20,5 +20,6 @@ export abstract class SkillBase {
     history: Array<{ role: 'user' | 'assistant'; content: string }>,
     userId: number,
     chatId?: string,
+    contextQuestions?: string[],
   ): AsyncIterable<string>;
 }

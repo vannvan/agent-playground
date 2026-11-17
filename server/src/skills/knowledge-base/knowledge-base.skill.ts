@@ -58,6 +58,7 @@ export class KnowledgeBaseSkill extends SkillBase {
     history: Array<{ role: 'user' | 'assistant'; content: string }>,
     userId: number,
     chatId?: string,
+    contextQuestions?: string[],
   ): AsyncIterable<string> {
     const url = `${this.engineUrl.replace(/\/+$/, '')}/chat/stream`;
     this.logger.log(`代理请求 → ${url}`);
@@ -67,7 +68,13 @@ export class KnowledgeBaseSkill extends SkillBase {
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMessage, session_id: chatId ?? null, system_prompt: ANSWER_SYSTEM_PROMPT, history }),
+        body: JSON.stringify({
+          message: userMessage,
+          session_id: chatId ?? null,
+          system_prompt: ANSWER_SYSTEM_PROMPT,
+          history,
+          context_questions: contextQuestions ?? [],
+        }),
         signal: AbortSignal.timeout(120_000),
       });
     } catch (err) {

@@ -185,11 +185,14 @@ export class AppController {
           // skill 模式使用独立 Python session，与 plain chat 隔离
           const skillPySessionId = `skill_${chatId}`;
           let pySessionId: string | null = null;
-          // 技能问答（如知识库检索）每次调用是独立的检索请求，
-          // 不传任何历史消息，防止 LLM 为历史话题生成多余的 tool_calls。
-          // 如果用户需要上下文，应在当前问题中自行描述。
+          // 技能问答（如知识库检索）：history 传空，防止 LLM 为历史话题生成多余 tool_calls。
+          // 但要传 context_questions（最近 2 轮 user 问题），供 Python 查询改写把追问补全为自包含查询。
           const skillHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-          for await (const chunk of skill.stream(userMessage, skillHistory, user.id, skillPySessionId)) {
+          const contextQuestions = history
+            .filter(m => m.role === 'user')
+            .slice(-2)
+            .map(m => m.content);
+          for await (const chunk of skill.stream(userMessage, skillHistory, user.id, skillPySessionId, contextQuestions)) {
             if (chunk.startsWith('__PY_SESSION_ID__')) {
               pySessionId = chunk.slice('__PY_SESSION_ID__'.length);
               continue;

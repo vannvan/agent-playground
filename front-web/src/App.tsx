@@ -85,6 +85,8 @@ function App() {
     const result = await chatsApi.open(chatId)
     setChatMessages((result.messages ?? []).map(normalizeChatMessage))
     setActiveChatId(chatId)
+    setInput('')
+    setSelectedSkill(null)
   }
 
   useEffect(() => {

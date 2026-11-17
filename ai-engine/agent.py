@@ -216,11 +216,24 @@ async def run_chat_stream(
     user_message: str,
     system_prompt: str | None = None,
     history: list[dict[str, str]] | None = None,
+    context_questions: list[str] | None = None,
 ) -> AsyncIterator[dict]:
-    """流式对话入口，yield SSE 事件 dict。"""
+    """流式对话入口，yield SSE 事件 dict。
+
+    context_questions：最近几轮 user 问题（不含 assistant），供查询改写使用。
+    与 history 解耦：history 控制进入 Agent 的对话，context 只用于改写查询。
+    """
     start_ts = time.time()
-    logger.info("run_chat_stream: session_id=%s msg_len=%d history_len=%s system_prompt_set=%s",
-                session_id, len(user_message), len(history) if history else None, bool(system_prompt))
+    logger.info("run_chat_stream: session_id=%s msg_len=%d history_len=%s ctx_len=%s system_prompt_set=%s",
+                session_id, len(user_message), len(history) if history else None,
+                len(context_questions) if context_questions else None, bool(system_prompt))
+
+    # 查询改写：追问补全为自包含查询（自包含或失败时返回原问题）
+    from query_rewriter import rewrite_query
+    effective_query = await rewrite_query(user_message, context_questions)
+    if effective_query != user_message:
+        logger.info("查询已改写: %r → %r", user_message, effective_query)
+
     graph = get_graph()
 
     # 使用传入的 system_prompt，否则用配置中的默认值
@@ -262,8 +275,8 @@ async def run_chat_stream(
     if not any(isinstance(m, SystemMessage) for m in msgs):
         msgs.insert(0, SystemMessage(content=effective_system))
     
-    # 追加当前用户消息
-    msgs.append(HumanMessage(content=user_message))
+    # 追加当前用户消息（用改写后的查询，保证检索不偏题）
+    msgs.append(HumanMessage(content=effective_query))
     state = AgentState(session_id=session_id, messages=msgs)
     config = _make_config()
 

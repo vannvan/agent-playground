@@ -149,7 +149,7 @@ async def suggestions():
 async def chat_stream(req: ChatReq):
     session_id = req.session_id or create_session()
     return StreamingResponse(
-        event_stream(session_id, req.message, req.system_prompt, req.history),
+        event_stream(session_id, req.message, req.system_prompt, req.history, req.context_questions),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -158,10 +158,18 @@ async def chat_stream(req: ChatReq):
     )
 
 
-async def event_stream(session_id: str, message: str, system_prompt: str | None = None, history: list[dict[str, str]] | None = None):
+async def event_stream(
+    session_id: str,
+    message: str,
+    system_prompt: str | None = None,
+    history: list[dict[str, str]] | None = None,
+    context_questions: list[str] | None = None,
+):
     """SSE 生成器，逐事件 yield。"""
-    logger.info("event_stream: session_id=%s message_len=%d history_len=%s", session_id, len(message), len(history) if history else None)
-    async for ev in run_chat_stream(session_id, message, system_prompt, history):
+    logger.info("event_stream: session_id=%s message_len=%d history_len=%s ctx_len=%s",
+                session_id, len(message), len(history) if history else None,
+                len(context_questions) if context_questions else None)
+    async for ev in run_chat_stream(session_id, message, system_prompt, history, context_questions):
         yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
 
 
