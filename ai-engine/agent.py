@@ -438,9 +438,11 @@ async def run_plain_chat_stream(
             elif role == "assistant":
                 msgs.append(AIMessage(content=content))
 
-    # 注入系统提示（仅当历史中没有时）
+    # 注入系统提示（仅当历史中没有时）。
+    # 普通聊天用独立的通用提示词，不用知识库限制提示词，
+    # 否则 LLM 会被限制为"只用片段里的事实"，对知识库外的问题拒绝回答。
     if not any(isinstance(m, SystemMessage) for m in msgs):
-        msgs.insert(0, SystemMessage(content=cfg.ai_system_prompt))
+        msgs.insert(0, SystemMessage(content=cfg.ai_plain_chat_prompt))
 
     # 追加当前用户消息
     msgs.append(HumanMessage(content=user_message))
