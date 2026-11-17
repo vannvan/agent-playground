@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     recursion_limit: int = 15
     data_dir: Path = Path("data")
     db_dir: Path = Path("vector_db")
+    ai_engine_source_token: str = ""
     session_ttl: int = 3600
     embedding_model: str = "BAAI/bge-small-zh-v1.5"
     rag_score_threshold: float = 0.45

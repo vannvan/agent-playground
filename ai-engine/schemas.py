@@ -72,3 +72,4 @@ class SseErrorEvent(BaseModel):
 class SseSourcesEvent(BaseModel):
     type: str = "sources"
     sources: list[dict[str, Any]]
+    citations: list[dict[str, Any]] = Field(default_factory=list)

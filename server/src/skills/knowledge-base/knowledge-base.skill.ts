@@ -13,7 +13,8 @@ const ANSWER_SYSTEM_PROMPT = `你是基于内部知识库回答的助手。
 【事实规则】
 - 只用片段里的事实；片段没提到的不要编造
 - 资料确实没有相关内容时，直说"知识库里没有相关信息"，不硬答
-- 需要可追溯时可轻量标注（来源：文件名），不打断阅读
+- 引用知识片段时，在相关句子末尾标注 [片段编号]（如 [1]、[2]），编号对应检索结果中的 index 字段
+- 回答末尾不要手动写"（来源：xxx）"，系统会自动根据引用编号补充来源列表
 
 【检索不足时，按需调用工具，不硬答】
 - 问题模糊、有歧义、缺关键信息 → 调用 ask_clarification 反问澄清，而不是瞎检索
@@ -157,7 +158,11 @@ export class KnowledgeBaseSkill extends SkillBase {
           if (!dataMatch?.[1]) continue;
           try {
             const event = JSON.parse(dataMatch[1]);
-            if (event.type === 'text' && event.content) {
+            if (event.type === 'tool') {
+              yield `__TOOL_CALL__${JSON.stringify(event)}`;
+            } else if (event.type === 'sources') {
+              yield `__SOURCES__${JSON.stringify(event)}`;
+            } else if (event.type === 'text' && event.content) {
               yield event.content;
             }
           } catch {

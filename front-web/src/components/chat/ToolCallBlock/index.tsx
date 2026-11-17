@@ -3,7 +3,7 @@ import { ChevronRight, Search, LoaderCircle } from 'lucide-react'
 import type { ChatBlock } from '../../../types'
 
 const TOOL_LABELS: Record<string, string> = {
-  search_knowledge_base: '🔍 检索知识库',
+  search_knowledge_base: '检索知识库',
   ask_clarification:     '❓ 澄清问题',
   search_recursive:      '🔄 多步检索',
   route_to_other:        '🔀 转接能力',

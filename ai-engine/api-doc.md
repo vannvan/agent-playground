@@ -121,7 +121,7 @@ data: <JSON>
 |------|------|------|
 | `text` | LLM 输出增量文本 | `content`：当前 token 片段 |
 | `tool` | Agent 触发工具调用 | `name`：工具名，`args`：调用参数 JSON 字符串 |
-| `sources` | 检索来源（工具调用后返回） | `sources`：数组，每项含 `content`、`source`、`score` |
+| `sources` | 检索来源（工具调用后返回） | `sources`：检索结果；`citations`：回答中实际引用的来源，供前端渲染为链接 |
 | `done` | 对话结束 | `session_id` |
 | `error` | 发生错误 | `message` |
 
@@ -130,7 +130,7 @@ data: <JSON>
 ```
 data: {"type":"text","content":""}
 data: {"type":"tool","name":"search_knowledge_base","args":"{\"query\":\"LangChain\",\"top_k\":4}"}
-data: {"type":"sources","sources":[{"content":"LangChain 是...","source":"data/xxx.md","score":0.85}]}
+data: {"type":"sources","sources":[{"content":"LangChain 是...","source":"data/xxx.md","score":0.85}],"citations":[{"number":1,"content":"LangChain 是...","source":"data/xxx.md","score":0.85}]}
 data: {"type":"text","content":"LangChain"}
 data: {"type":"text","content":"是"}
 data: {"type":"text","content":"一个"}

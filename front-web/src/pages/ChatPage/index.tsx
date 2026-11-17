@@ -18,7 +18,7 @@ import { TextArea, Tooltip } from '@lobehub/ui'
 import 'streamdown/styles.css'
 import { suggestionsApi, sendChatMessage, CONVERSATION_MODE, parseSseStream, type SseEvent } from '../../services/api'
 import { normalizeChatMessage } from '../../types'
-import type { ChatMessage, ModelConfig, User, GeneratedImage, ChatBlock, SettingsTab } from '../../types'
+import type { ChatMessage, ModelConfig, User, GeneratedImage, ChatBlock, SettingsTab, SourceCitation } from '../../types'
 import { ConversationBlocks } from '../../components/chat/ConversationBlocks'
 import './index.less'
 
@@ -115,6 +115,7 @@ export function ChatPage({
   function buildBlocks(events: SseEvent[]): ChatBlock[] {
     const blocks: ChatBlock[] = []
     let pendingText = ''
+    let citations: SourceCitation[] = []
 
     for (const ev of events) {
       switch (ev.type) {
@@ -129,16 +130,7 @@ export function ChatPage({
           pendingText += ev.content ?? ''
           break
         case 'sources':
-          for (let i = blocks.length - 1; i >= 0; i--) {
-            if (blocks[i].type === 'tool') {
-              ;(blocks[i] as Extract<ChatBlock, { type: 'tool' }>).sources =
-                (ev.sources ?? []).map((s) => ({
-                  file: s.source.split('/').pop() ?? 'unknown',
-                  content: s.content,
-                }))
-              break
-            }
-          }
+          citations = ev.citations ?? []
           break
         case 'tool_result':
           for (let i = blocks.length - 1; i >= 0; i--) {
@@ -163,6 +155,9 @@ export function ChatPage({
     }
     if (pendingText) {
       blocks.push({ type: 'text', content: pendingText })
+    }
+    if (citations.length) {
+      blocks.push({ type: 'citations', citations })
     }
     return blocks
   }

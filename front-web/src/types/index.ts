@@ -9,6 +9,7 @@ export interface ChatSession { chatId: string; title: string }
 
 /** 单次知识库检索来源项 */
 export interface SourceItem { file: string; content: string }
+export interface SourceCitation { number: number; source: string; content: string; score?: number }
 
 /**
  * 消息区块：三种渲染区
@@ -19,6 +20,7 @@ export interface SourceItem { file: string; content: string }
 export type ChatBlock =
   | { type: 'text'; content: string }
   | { type: 'tool'; tool: string; args: string; result?: string; sources?: SourceItem[]; status?: 'relevant' | 'no_relevant_result'; loading?: boolean }
+  | { type: 'citations'; citations: SourceCitation[] }
   | { type: 'clarify'; question: string; pending: boolean }
 
 export interface ChatMessage {

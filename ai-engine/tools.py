@@ -32,6 +32,7 @@ def search_knowledge_base(query: str, top_k: int = 6) -> str:
     Returns:
         JSON格式：{"status":"relevant"|"no_relevant_result", "result_count":N, ...}
         result_count > 0 时必须停止检索，直接整合回答。
+        results 中每条带 index 字段（1-based），回答时用 [index] 引用对应片段。
     """
     logger.info("工具调用 search_knowledge_base: %s (top_k=%d)", query, top_k)
     results = retrieve(query, k=top_k)
@@ -41,7 +42,7 @@ def search_knowledge_base(query: str, top_k: int = 6) -> str:
         "status": "relevant",
         "result_count": len(results),
         "query": query,
-        "results": [{"content": r["formatted"], "source": r["source"], "kind": r["kind"], "score": r["score"], "matched_by": r["channel"]} for r in results],
+        "results": [{"index": i + 1, "content": r["formatted"], "source": r["source"], "kind": r["kind"], "score": r["score"], "matched_by": r["channel"]} for i, r in enumerate(results)],
     }, ensure_ascii=False)
 
 

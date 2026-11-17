@@ -20,6 +20,7 @@ pip3 install -r requirements.txt
 # 复制并编辑配置
 cp .env.example .env
 # 填写 AI_API_KEY 和 AI_BASE_URL（国产模型或自建模型）
+# AI_ENGINE_SOURCE_TOKEN 需与 server/.env 中的值保持一致
 
 # 入库文档（将文件放入 data/ 目录）
 python3 ingest.py

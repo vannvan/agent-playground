@@ -1,5 +1,7 @@
-import { Controller, Post, Body, Res, Get, Request as NestReq, UseGuards } from '@nestjs/common';
+import { BadRequestException, Controller, Post, Body, Res, Get, Query, Request as NestReq, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import { SessionAuthGuard } from '../auth/auth.guard';
 import type { AuthenticatedRequest } from '../auth/auth.guard';
 import { AiEngineService } from './ai-engine.service';
@@ -31,6 +33,37 @@ export class AiEngineController {
     } catch {
       return { questions: [] };
     }
+  }
+
+  @Get('source')
+  async source(
+    @Query('source') source: string | undefined,
+    @Res() response: Response,
+  ) {
+    if (!source?.trim()) throw new BadRequestException('缺少来源路径');
+
+    const upstream = await this.aiEngine.fetchSource(source);
+    response.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'application/octet-stream');
+    response.setHeader('Content-Disposition', upstream.headers.get('content-disposition') ?? 'inline');
+    response.setHeader('Cache-Control', 'private, no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    if (!upstream.body) {
+      response.end();
+      return;
+    }
+    const reader = upstream.body.getReader();
+    const body = Readable.from((async function* () {
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) return;
+          yield Buffer.from(value);
+        }
+      } finally {
+        reader.releaseLock();
+      }
+    })());
+    await pipeline(body, response);
   }
 
   /**
@@ -65,7 +98,7 @@ export class AiEngineController {
         } else if (event.type === 'tool') {
           response.write(`event: tool\ndata: ${JSON.stringify({ name: event.name, args: event.args })}\n\n`);
         } else if (event.type === 'sources') {
-          response.write(`event: sources\ndata: ${JSON.stringify({ sources: event.sources ?? [] })}\n\n`);
+          response.write(`event: sources\ndata: ${JSON.stringify({ sources: event.sources ?? [], citations: event.citations ?? [] })}\n\n`);
         } else if (event.type === 'error') {
           response.write(`event: error\ndata: ${JSON.stringify({ message: event.message })}\n\n`);
           response.end();

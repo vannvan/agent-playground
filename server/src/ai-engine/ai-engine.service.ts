@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, ServiceUnavailableException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 
 const AI_ENGINE_URL = process.env.AI_ENGINE_URL?.trim() || 'http://localhost:8000';
 
@@ -16,11 +16,42 @@ export interface AiEngineSseEvent {
   message?: string;
   status?: string;
   sources?: Array<{ content: string; source: string; score: number }>;
+  citations?: Array<{ content: string; source: string; score: number; number: number }>;
 }
 
 @Injectable()
 export class AiEngineService {
   private readonly logger = new Logger(AiEngineService.name);
+
+  async fetchSource(source: string): Promise<Response> {
+    const token = process.env.AI_ENGINE_SOURCE_TOKEN?.trim();
+    if (!token) {
+      throw new ServiceUnavailableException('未配置 AI_ENGINE_SOURCE_TOKEN');
+    }
+
+    const url = `${AI_ENGINE_URL.replace(/\/+$/, '')}/sources/file?source=${encodeURIComponent(source)}`;
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { 'X-AI-Engine-Source-Token': token },
+        signal: AbortSignal.timeout(15_000),
+      });
+    } catch (err) {
+      throw new ServiceUnavailableException(
+        `AI Engine 不可达（${AI_ENGINE_URL}）：${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    if (response.status === 404) {
+      await response.body?.cancel();
+      throw new NotFoundException('来源文件不存在');
+    }
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new ServiceUnavailableException(`AI Engine 来源请求失败（${response.status}）`);
+    }
+    return response;
+  }
 
   /** Parse SSE stream from Python ai-engine into typed events */
   private async *parseSseStream(

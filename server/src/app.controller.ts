@@ -198,8 +198,10 @@ export class AppController {
               continue;
             }
             if (chunk.startsWith('__TOOL_CALL__') || chunk.startsWith('__SOURCES__')) {
-              const meta = JSON.parse(chunk.slice(1));
-              if (chunk.startsWith('__TOOL_CALL__')) {
+              const isToolCall = chunk.startsWith('__TOOL_CALL__');
+              const marker = isToolCall ? '__TOOL_CALL__' : '__SOURCES__';
+              const meta = JSON.parse(chunk.slice(marker.length));
+              if (isToolCall) {
                 response.write(`event: tool\ndata: ${JSON.stringify(meta)}\n\n`);
               } else {
                 response.write(`event: sources\ndata: ${JSON.stringify(meta)}\n\n`);

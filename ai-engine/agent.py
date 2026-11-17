@@ -211,6 +211,41 @@ def _make_config() -> dict:
     return {"recursion_limit": get_settings().recursion_limit}
 
 
+
+# ── 引用格式化 ────────────────────────────────────────────────────────────────
+
+_SUPERSCRIPT = str.maketrans("0123456789", "⁰¹²³⁴⁵⁶⁷⁸⁹")
+
+
+def _format_citations(text: str, sources: list[dict]) -> tuple[str, list[dict]]:
+    """把回答中的 [N] 引用标记转为上标数字，并返回实际引用的来源。
+
+    - [1] → ¹（Unicode 上标，前端零改动即可渲染）
+    - 无引用标记时原样返回
+    """
+    if not sources or not text or "[" not in text:
+        return text, []
+
+    import re
+    cited_nums = sorted(set(int(m) for m in re.findall(r"\[(\d+)\]", text)))
+    if not cited_nums:
+        return text, []
+
+    def _to_sup(m: re.Match) -> str:
+        n = int(m.group(1))
+        if 1 <= n <= len(sources):
+            return f" {str(n).translate(_SUPERSCRIPT)}"
+        return m.group(0)  # 编号越界，保留原样
+
+    body = re.sub(r"\[(\d+)\]", _to_sup, text)
+    citations = [
+        {**sources[n - 1], "number": n}
+        for n in cited_nums
+        if 1 <= n <= len(sources)
+    ]
+    return body, citations
+
+
 async def run_chat_stream(
     session_id: str,
     user_message: str,
@@ -281,6 +316,7 @@ async def run_chat_stream(
     config = _make_config()
 
     all_sources = []
+    cited_sources = []
     all_texts = []
     no_relevant_result = False
     no_relevant_tool_name = "search_knowledge_base"
@@ -334,12 +370,14 @@ async def run_chat_stream(
             # 检索到了内容但 LLM 未能生成文本（工具链异常），用已知片段作答
             yield {"type": "text", "content": "根据知识库检索到的相关内容：" + "\n".join(s.get("content","") for s in all_sources[:3])}
         elif all_texts:
-            yield {"type": "text", "content": "".join(all_texts)}
+            raw_text = "".join(all_texts)
+            formatted_text, cited_sources = _format_citations(raw_text, all_sources)
+            yield {"type": "text", "content": formatted_text}
         else:
             yield {"type": "text", "content": "知识库中没有找到与相关问题相关的信息。"}
         
         # 发送 sources
-        yield {"type": "sources", "sources": all_sources}
+        yield {"type": "sources", "sources": all_sources, "citations": cited_sources}
         yield {"type": "done", "session_id": session_id}
 
     except Exception as e:

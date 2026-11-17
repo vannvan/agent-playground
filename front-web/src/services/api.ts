@@ -26,6 +26,12 @@ export interface SseEvent {
  message?: string
   status?: string
   sources?: Array<{ source: string; content: string; score?: number }>
+  citations?: Array<{ number: number; source: string; content: string; score?: number }>
+}
+
+export function sourceFileUrl(source: string) {
+  const apiBase = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000/api').replace(/\/+$/, '')
+  return `${apiBase}/ai-engine/source?source=${encodeURIComponent(source)}`
 }
 
 /**

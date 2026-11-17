@@ -1,6 +1,9 @@
 """main.py — FastAPI 入口（薄，只做 HTTP 分发）"""
 from __future__ import annotations
+import mimetypes
+import secrets
 from typing import Optional
+from pathlib import Path
 
 import json
 from dotenv import load_dotenv
@@ -10,8 +13,8 @@ import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import FastAPI, Header, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
 
 from config import get_settings
 from schemas import (
@@ -53,6 +56,21 @@ app = FastAPI(
 )
 
 
+def resolve_source_file(source: str) -> Path:
+    data_root = get_settings().data_dir.resolve()
+    try:
+        source_path = Path(source).resolve(strict=True)
+    except (OSError, RuntimeError, ValueError):
+        raise HTTPException(status_code=404, detail="来源文件不存在")
+    if (
+        not source_path.is_relative_to(data_root)
+        or not source_path.is_file()
+        or source_path.suffix.lower() not in {".pdf", ".txt", ".md", ".docx"}
+    ):
+        raise HTTPException(status_code=404, detail="来源文件不存在")
+    return source_path
+
+
 @app.get("/", tags=["root"])
 async def root():
     return {
@@ -85,6 +103,30 @@ async def health():
 @app.get("/tools", response_model=ToolsResp, tags=["tools"])
 async def list_tools():
     return ToolsResp(tools=get_tool_names())
+
+
+@app.get("/sources/file", include_in_schema=False)
+async def get_source_file(
+    source: str,
+    source_token: Optional[str] = Header(default=None, alias="X-AI-Engine-Source-Token"),
+):
+    expected_token = get_settings().ai_engine_source_token
+    if not expected_token:
+        raise HTTPException(status_code=503, detail="原文访问服务未配置")
+    if not secrets.compare_digest(source_token or "", expected_token):
+        raise HTTPException(status_code=403, detail="无权访问来源文件")
+
+    source_path = resolve_source_file(source)
+    return FileResponse(
+        source_path,
+        filename=source_path.name,
+        media_type=mimetypes.guess_type(source_path.name)[0] or "application/octet-stream",
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 # 知识库主题 → 引导问题映射

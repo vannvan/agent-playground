@@ -10,9 +10,10 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 
+from config import get_settings
 from normalize import normalize_document
 
-DATA_DIR   = Path("data")            # 你的知识库文件放这里
+DATA_DIR   = get_settings().data_dir # 你的知识库文件放这里
 DB_DIR     = "vector_db"             # 向量库存这里
 MANIFEST   = Path("ingest_manifest.json")  # 记录已处理文件（增量依据）
 CHUNK_SIZE, CHUNK_OVERLAP = 500, 50
