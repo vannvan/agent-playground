@@ -74,10 +74,21 @@ def search_recursive(query: str, follow_ups: Optional[list[str]] = None) -> str:
     Returns:
         多轮检索合并去重后的格式化片段。
     """
-    logger.info("工具调用 search_recursive: %s, follow_ups=%s", query, follow_ups)
+    # LLM 有时将 follow_ups 序列化为 JSON 字符串而非列表，需兼容解析
+    parsed_follow_ups: list[str] = []
+    if follow_ups is not None:
+        if isinstance(follow_ups, str):
+            try:
+                parsed = json.loads(follow_ups)
+                parsed_follow_ups = parsed if isinstance(parsed, list) else [follow_ups]
+            except (json.JSONDecodeError, TypeError):
+                parsed_follow_ups = [follow_ups]
+        elif isinstance(follow_ups, list):
+            parsed_follow_ups = follow_ups
+    logger.info("工具调用 search_recursive: %s, follow_ups=%s", query, parsed_follow_ups)
     seen: set[str] = set()
     merged: list[str] = []
-    for q in [query] + (follow_ups or []):
+    for q in [query] + (parsed_follow_ups or []):
         for r in retrieve(q, k=5):
             key = r["content"][:80]          # 以片段开头粗判去重
             if key not in seen:

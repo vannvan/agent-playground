@@ -185,7 +185,11 @@ export class AppController {
           // skill 模式使用独立 Python session，与 plain chat 隔离
           const skillPySessionId = `skill_${chatId}`;
           let pySessionId: string | null = null;
-          for await (const chunk of skill.stream(userMessage, history, user.id, skillPySessionId)) {
+          // 技能问答（如知识库检索）每次调用是独立的检索请求，
+          // 不传任何历史消息，防止 LLM 为历史话题生成多余的 tool_calls。
+          // 如果用户需要上下文，应在当前问题中自行描述。
+          const skillHistory: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+          for await (const chunk of skill.stream(userMessage, skillHistory, user.id, skillPySessionId)) {
             if (chunk.startsWith('__PY_SESSION_ID__')) {
               pySessionId = chunk.slice('__PY_SESSION_ID__'.length);
               continue;
@@ -238,10 +242,12 @@ export class AppController {
           throw new Error(ev.message ?? 'AI Engine 返回错误');
         }
       }
-      // 保存 plain 模式返回的 Python session_id，供后续 skill 复用
-      if (plainSessionId !== chatId) {
-        await this.database.updatePythonSessionId(chatId, plainSessionId);
-      }
+      // 【修复】plain chat 不持久化 Python session 到 DB，避免与 skill 模式交叉污染。
+      // plain chat 每次独立发起请求，无需跨轮共享 Python session；
+      // 若保留此处写操作，skill 模式下读取同 chatId 时会带上 plain chat 的历史和系统提示。
+      // if (plainSessionId !== chatId) {
+      //   await this.database.updatePythonSessionId(chatId, plainSessionId);
+      // }
       await this.database.appendUserChatExchange(
         user.id, chatId, rawMessage, answer, 'agnes-2.5-flash',
         body.mode, resolvedSkillId,

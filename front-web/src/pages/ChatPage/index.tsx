@@ -276,7 +276,7 @@ export function ChatPage({
   return (
     <section className="chat-page">
       <div className="conversation" ref={convRef}>
-        {normalizedMessages.length === 0 ? (
+        {normalizedMessages.length === 0 && !isStreaming ? (
           <div className="empty-state">
             <div className="orb">
               <Sparkles size={26} />
@@ -330,11 +330,18 @@ export function ChatPage({
                 <div key={msg.id} className="message message--assistant">
                   <div className="assistant-message-inner">
                     <div className="answer">
-                      <ConversationBlocks
-                        blocks={msg.blocks}
-                        isStreaming={isLast && isStreaming}
-                        thinkingTool={isLast && isStreaming ? thinkingTool : null}
-                      />
+                      {isLast && isStreaming && msg.blocks.length === 0 ? (
+                        <div className="reply-loading" role="status" aria-live="polite">
+                          <LoaderCircle className="spin" size={16} />
+                          <span>正在思考…</span>
+                        </div>
+                      ) : (
+                        <ConversationBlocks
+                          blocks={msg.blocks}
+                          isStreaming={isLast && isStreaming}
+                          thinkingTool={isLast && isStreaming ? thinkingTool : null}
+                        />
+                      )}
                     </div>
                     {msg.blocks.length > 0 && (
                       <div className="assistant-message-actions">
@@ -356,6 +363,18 @@ export function ChatPage({
                 </div>
               )
             })}
+            {isStreaming && normalizedMessages[normalizedMessages.length - 1]?.role !== 'assistant' && (
+              <div className="message message--assistant">
+                <div className="assistant-message-inner">
+                  <div className="answer">
+                    <div className="reply-loading" role="status" aria-live="polite">
+                      <LoaderCircle className="spin" size={16} />
+                      <span>正在思考…</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
         {error && <p className="error chat-error">{error}</p>}

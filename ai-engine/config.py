@@ -46,7 +46,7 @@ class Settings(BaseSettings):
         "✅ 正确（多步推理）：\n"
         "用户问\"用户认证和权限的关系\" → search_knowledge_base(\"用户认证\") → 不够则 search_recursive(\"用户认证\", follow_ups=[\"权限系统\"])\n"
     )
-    recursion_limit: int = 8
+    recursion_limit: int = 15
     data_dir: Path = Path("data")
     db_dir: Path = Path("vector_db")
     session_ttl: int = 3600

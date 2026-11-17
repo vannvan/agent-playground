@@ -31,6 +31,8 @@ class AgentState(dict):
         self["sources"] = []
         self["consecutive_no_relevant"] = extra.get("consecutive_no_relevant", 0)
         self["tool_call_count"] = extra.get("tool_call_count", 0)
+        self["tool_fail_count"] = extra.get("tool_fail_count", 0)
+        self["consecutive_kb_search"] = extra.get("consecutive_kb_search", 0)
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)
@@ -85,7 +87,13 @@ def chat_node(state: AgentState) -> dict:
     msgs.append(response)
     # 最多允许 N 次工具调用，防止无限循环
     MAX_TOOL_CALLS = get_settings().recursion_limit - 2  # 留余量给最终回复
-    return {"messages": msgs, "sources": [], "tool_call_count": prev_tc + n_tc}
+    new_tc = prev_tc + n_tc
+    # 硬上限：即使 LLM 忽略停止指令，3 轮工具调用后也必须结束。
+    # 通过将 tool_call_count 设为超限值，使 should_continue 直接返回 END。
+    if new_tc >= 3:
+        logger.warning("已达到工具调用硬上限 %d，强制终止", new_tc)
+        return {"messages": msgs, "sources": [], "tool_call_count": get_settings().recursion_limit}
+    return {"messages": msgs, "sources": [], "tool_call_count": new_tc}
 
 
 def tool_node(state: AgentState) -> dict:
@@ -125,8 +133,20 @@ def tool_node(state: AgentState) -> dict:
             except (TypeError, json.JSONDecodeError):
                 pass
 
+    # 统计本轮工具失败次数；只要有一个成功就重置计数
+    prev_fails = state.get("tool_fail_count", 0)
+    had_error = any("工具执行出错" in r.content for r in responses)
+    has_success = any("工具执行出错" not in r.content for r in responses)
+    new_fails = (prev_fails + 1) if had_error and not has_success else 0
     msgs = list(state["messages"]) + responses
-    return {"messages": msgs, "sources": all_sources, "consecutive_no_relevant": state.get("consecutive_no_relevant", 0)}
+    # 统计连续空检索次数（LLM 反复调 search_knowledge_base 但不回答时终止）
+    prev_kb = state.get("consecutive_kb_search", 0)
+    new_kb = prev_kb + 1 if not all_sources else 0
+    return {"messages": msgs, "sources": all_sources,
+            "consecutive_no_relevant": state.get("consecutive_no_relevant", 0),
+            "tool_fail_count": new_fails,
+            "consecutive_kb_search": new_kb,
+            "tool_call_count": state.get("tool_call_count", 0)}
 
 
 def should_continue(state: AgentState) -> str:
@@ -141,9 +161,21 @@ def should_continue(state: AgentState) -> str:
     consecutive = state.get("consecutive_no_relevant", 0)
     if consecutive >= 3:
         return END
+    # LLM 连续两次检索知识库均无结果 → 强制结束，不重复徒劳搜索
+    if state.get("consecutive_kb_search", 0) >= 2:
+        logger.warning("连续 %d 次 KB 检索为空，强制终止", state["consecutive_kb_search"])
+        return END
+    # 连续工具调用持续报错 → 强制结束，避免空转耗尽 recursion_limit
+    if state.get("tool_fail_count", 0) >= 2:
+        logger.warning("连续工具调用失败 %d 次，强制终止对话", state["tool_fail_count"])
+        return END
     # 总工具调用次数上限
     max_tc = get_settings().recursion_limit - 2
     if state.get("tool_call_count", 0) >= max_tc:
+        return END
+    # 硬上限：tool_call_count 被 chat_node 设为 recursion_limit 时直接终止
+    if state.get("tool_call_count", 0) >= get_settings().recursion_limit:
+        logger.info("工具调用已达硬上限，终止对话")
         return END
     tool_calls = getattr(last, "tool_calls", []) or []
     if tool_calls:
@@ -194,9 +226,12 @@ async def run_chat_stream(
     # 使用传入的 system_prompt，否则用配置中的默认值
     cfg = get_settings()
     effective_system = system_prompt if system_prompt else cfg.ai_system_prompt
-    # 使用传入历史或从内存加载
+    # 使用传入历史或从内存加载。
+    # 注意：history=[] 表示调用方明确不传历史（skill 模式独立请求），
+    # 此时不应回退到 memory，否则会加载之前轮次的 user 消息，
+    # 导致 LLM 为历史话题生成多余的 tool_calls。
     msgs: list[Any] = []
-    if history:
+    if history is not None:
         for h in history:
             role = h.get("role", "user")
             content_h = h.get("content", "")
@@ -238,7 +273,10 @@ async def run_chat_stream(
     no_relevant_tool_name = "search_knowledge_base"
     prev_tool_call_ids = set()
     prev_text_message_ids = set()
-    last_processed_count = 0
+    # 跳过历史消息（含 history / memory 加载的 AIMessage），只收集本轮新生成的内容。
+    # stream_mode="values" 首帧会返回完整初始 state，若从 0 开始处理，
+    # 历史 AIMessage 的 content 会被重复加入 all_texts，导致新旧答案拼接。
+    last_processed_count = len(msgs)
     try:
         async for chunk in graph.astream(state, config=config, stream_mode="values"):
             messages = chunk.get("messages", [])
@@ -275,11 +313,17 @@ async def run_chat_stream(
                             prev_text_message_ids.add(msg_id)
                         all_texts.append(msg.content)
 
-        # 发送最终回复：no_relevant_result 时优先显示提示，避免和历史回答拼接
+        # 发送最终回复
+        # 优先级：no_relevant_result > 工具持续失败兜底 > LLM文本 > 空结果提示
         if no_relevant_result:
             yield {"type": "text", "content": "知识库中没有找到与相关问题相关的信息。"}
+        elif not all_texts and all_sources:
+            # 检索到了内容但 LLM 未能生成文本（工具链异常），用已知片段作答
+            yield {"type": "text", "content": "根据知识库检索到的相关内容：" + "\n".join(s.get("content","") for s in all_sources[:3])}
         elif all_texts:
             yield {"type": "text", "content": "".join(all_texts)}
+        else:
+            yield {"type": "text", "content": "知识库中没有找到与相关问题相关的信息。"}
         
         # 发送 sources
         yield {"type": "sources", "sources": all_sources}
