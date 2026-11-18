@@ -1,8 +1,7 @@
-"""schemas.py — 统一请求/响应 Pydantic 模型"""
+"""Chat API request and response schemas."""
 from __future__ import annotations
 
-from datetime import datetime
-from typing import Optional, Any
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -15,37 +14,10 @@ class ChatReq(BaseModel):
     context_questions: Optional[list[str]] = Field(None, description="可选：最近几轮用户问题，供查询改写")
 
 
-class IngestReq(BaseModel):
-    source_dir: Optional[str] = Field(None, description="文档目录；缺省用配置的 DATA_DIR")
-
-
-class HealthResp(BaseModel):
-    status: str = "ok"
-    model: str
-    tool_count: int
-    tools: list[str]
-
-
-class ToolsResp(BaseModel):
-    tools: list[str]
-
-
 class SyncChatResp(BaseModel):
     session_id: str
     reply: str
     sources: list[dict[str, Any]] = Field(default_factory=list)
-
-
-class IngestResp(BaseModel):
-    documents_added: int
-    files_processed: int
-    skipped: int
-
-
-class SessionResp(BaseModel):
-    session_id: str
-    messages: list[dict[str, Any]]
-    created_at: datetime
 
 
 class SseTextEvent(BaseModel):

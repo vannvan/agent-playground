@@ -12,8 +12,8 @@ from fastapi import HTTPException
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from agent import _format_citations
-from main import get_source_file, resolve_source_file
+from app.api.routes.knowledge_base import get_source_file, resolve_source_file
+from app.chat.agent import _format_citations
 
 
 class CitationTests(unittest.TestCase):
@@ -26,7 +26,7 @@ class CitationTests(unittest.TestCase):
 
         text, citations = _format_citations("Answer [2], then [1], [2], [9].", sources)
 
-        self.assertEqual(text, "Answer ², then ¹, ², [9].")
+        self.assertEqual(text, "Answer  ², then  ¹,  ², [9].")
         self.assertEqual(
             citations,
             [
@@ -43,8 +43,8 @@ class CitationTests(unittest.TestCase):
             source.write_text("source")
             outside = root.parent / "outside.txt"
             outside.write_text("outside")
-            with patch("main.get_settings", return_value=SimpleNamespace(data_dir=root)):
-                self.assertEqual(resolve_source_file(str(source)), source)
+            with patch("app.api.routes.knowledge_base.get_settings", return_value=SimpleNamespace(data_dir=root)):
+                self.assertEqual(resolve_source_file(str(source)), source.resolve())
                 with self.assertRaises(HTTPException) as error:
                     resolve_source_file(str(outside))
                 self.assertEqual(error.exception.status_code, 404)
@@ -56,13 +56,13 @@ class CitationTests(unittest.TestCase):
             source = root / "guide.md"
             source.write_text("source")
             settings = SimpleNamespace(data_dir=root, ai_engine_source_token="shared-secret")
-            with patch("main.get_settings", return_value=settings):
+            with patch("app.api.routes.knowledge_base.get_settings", return_value=settings):
                 with self.assertRaises(HTTPException) as error:
                     asyncio.run(get_source_file(str(source), "wrong-token"))
                 self.assertEqual(error.exception.status_code, 403)
 
                 response = asyncio.run(get_source_file(str(source), "shared-secret"))
-                self.assertEqual(response.path, str(source))
+                self.assertEqual(response.path, source.resolve())
                 self.assertTrue(response.headers["content-disposition"].startswith("inline;"))
 
 

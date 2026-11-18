@@ -1,9 +1,9 @@
 ---
-name: project-directory-spec
+name: web-project-spec
 description: 规定前端项目（React/Vue/Vite/Next.js 等）的文件与目录结构规范，当 AI 需要创建新组件、页面、API、状态管理或工具函数时必须触发并遵守。
 ---
 
-# 前端项目目录规范 (Project Directory Specification)
+# 前端项目目录规范 (Project Specification)
 
 ## 1. 适用场景 (When to use)
 - 当用户要求**创建新页面、新组件、新 API、新 Hooks 或工具类**时。

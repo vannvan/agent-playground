@@ -32,6 +32,16 @@ export const SUPPORTED_IMAGE_SIZES = [
   '1792x1024',
 ] as const;
 
+const CITATION_SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+
+function formatCitationMarkers(text: string, sourceCount: number) {
+  return text.replace(/\[(\d+)\]/g, (marker, digits: string) => {
+    const number = Number(digits);
+    if (number < 1 || number > sourceCount) return marker;
+    return ` ${String(number).replace(/\d/g, (digit) => CITATION_SUPERSCRIPTS[Number(digit)])}`;
+  });
+}
+
 export function validateImageSize(size?: string) {
   const selectedSize = size || '1024x1024';
   if (!SUPPORTED_IMAGE_SIZES.includes(selectedSize as typeof SUPPORTED_IMAGE_SIZES[number])) {
@@ -145,6 +155,7 @@ export class AppController {
     response.setHeader('Content-Type', 'text/event-stream');
     response.setHeader('Cache-Control', 'no-cache');
     response.setHeader('Connection', 'keep-alive');
+    response.setHeader('X-Accel-Buffering', 'no');
     response.flushHeaders();
 
     // 剥离 @skill 前缀，获取纯用户问题
@@ -159,6 +170,7 @@ export class AppController {
     const resolvedSkillId = body.skillId ?? effectiveSkillId;
 
     let answer = '';
+    let citationSourceCount = 0;
     const finishStream = async (reader: AsyncIterable<string>) => {
       for await (const chunk of reader) {
         response.write(`data: ${JSON.stringify({ content: chunk })}\n\n`);
@@ -197,13 +209,23 @@ export class AppController {
               pySessionId = chunk.slice('__PY_SESSION_ID__'.length);
               continue;
             }
-            if (chunk.startsWith('__TOOL_CALL__') || chunk.startsWith('__SOURCES__')) {
+            if (
+              chunk.startsWith('__TOOL_CALL__')
+              || chunk.startsWith('__TOOL_RESULT__')
+              || chunk.startsWith('__SOURCES__')
+            ) {
               const isToolCall = chunk.startsWith('__TOOL_CALL__');
-              const marker = isToolCall ? '__TOOL_CALL__' : '__SOURCES__';
+              const isToolResult = chunk.startsWith('__TOOL_RESULT__');
+              const marker = isToolCall
+                ? '__TOOL_CALL__'
+                : isToolResult ? '__TOOL_RESULT__' : '__SOURCES__';
               const meta = JSON.parse(chunk.slice(marker.length));
               if (isToolCall) {
                 response.write(`event: tool\ndata: ${JSON.stringify(meta)}\n\n`);
+              } else if (isToolResult) {
+                response.write(`event: tool_result\ndata: ${JSON.stringify(meta)}\n\n`);
               } else {
+                citationSourceCount = meta.sources?.length ?? 0;
                 response.write(`event: sources\ndata: ${JSON.stringify(meta)}\n\n`);
               }
               continue;
@@ -215,7 +237,11 @@ export class AppController {
             await this.database.updatePythonSessionId(skillPySessionId, pySessionId);
           }
           await this.database.appendUserChatExchange(
-            user.id, chatId, rawMessage, answer, privateConfig.textModel,
+            user.id,
+            chatId,
+            rawMessage,
+            formatCitationMarkers(answer, citationSourceCount),
+            privateConfig.textModel,
             body.mode, resolvedSkillId,
           );
           await this.database.recordUserGenerationRequest(

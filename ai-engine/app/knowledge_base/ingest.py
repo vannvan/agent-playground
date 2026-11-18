@@ -10,8 +10,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_chroma import Chroma
 
-from config import get_settings
-from normalize import normalize_document
+from app.core.config import get_settings
+from app.knowledge_base.normalize import normalize_document
 
 DATA_DIR   = get_settings().data_dir # 你的知识库文件放这里
 DB_DIR     = "vector_db"             # 向量库存这里
@@ -99,7 +99,7 @@ def remove_deleted_sources(
     return removed_files
 
 
-def main():
+def ingest_documents():
     if not DATA_DIR.is_dir():
         raise FileNotFoundError(f"知识库目录不存在：{DATA_DIR}")
 
@@ -153,6 +153,3 @@ def main():
         print(f"入库 {chunk_count} 个片段，更新 {len(new_files)} 个文件，删除 {len(removed_files)} 个文件")
     else:
         print("无新增文件，跳过本次建库")
-
-if __name__ == "__main__":
-    main()

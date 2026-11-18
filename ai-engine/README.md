@@ -13,6 +13,8 @@
 
 ## 快速开始
 
+以下命令均在 `ai-engine/` 目录下执行。
+
 ```bash
 # 安装依赖
 pip3 install -r requirements.txt
@@ -23,10 +25,10 @@ cp .env.example .env
 # AI_ENGINE_SOURCE_TOKEN 需与 server/.env 中的值保持一致
 
 # 入库文档（将文件放入 data/ 目录）
-python3 ingest.py
+python3 -m scripts.ingest
 
 # 启动服务
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 ## API 接口
@@ -47,14 +49,16 @@ API 文档：`http://localhost:8000/docs`
 
 ```
 ai-engine/
-├── main.py          # FastAPI 入口 + 路由
-├── config.py        # 配置加载（环境变量 + .env）
-├── schemas.py       # Pydantic 请求/响应模型
-├── agent.py         # LangGraph 编排
-├── tools.py         # 工具注册表
-├── retriever.py     # 向量检索（Chroma）
-├── ingest.py        # 文档加载/切分/入库
-├── memory.py        # 会话与记忆（内存版）
+├── app/
+│   ├── main.py                  # FastAPI app factory 与 lifespan
+│   ├── api/routes/              # 按资源拆分的 HTTP 路由
+│   ├── core/config.py           # 配置加载（环境变量 + .env）
+│   ├── chat/                    # LangGraph、工具、查询改写和对话 schema
+│   ├── knowledge_base/          # 检索、归一化和入库逻辑
+│   └── sessions/                # 会话记忆
+├── scripts/                     # 本地手动执行的运维脚本
+│   └── ingest.py
+├── tests/
 ├── requirements.txt
 ├── .env.example
 ├── data/            # 知识库源文件
@@ -73,3 +77,5 @@ ai-engine/
 | SSE 流式输出 | ✅ |
 | Redis 长期记忆 | ⏸ |
 | 评测埋点 | ⏸ |
+
+`scripts/ingest.py` 是本地手动工具脚本，不属于 HTTP 路由；从 `ai-engine/` 目录运行 `python3 -m scripts.ingest`。

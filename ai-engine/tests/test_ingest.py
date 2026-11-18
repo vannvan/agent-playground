@@ -11,7 +11,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from langchain_core.documents import Document
 
-from ingest import (
+from app.knowledge_base.ingest import (
     remove_deleted_sources,
     replace_changed_sources,
     save_manifest,
@@ -104,7 +104,7 @@ class IngestTests(unittest.TestCase):
     def test_manifest_is_written_and_replaced(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             manifest_path = Path(directory) / "ingest_manifest.json"
-            with patch("ingest.MANIFEST", manifest_path):
+            with patch("app.knowledge_base.ingest.MANIFEST", manifest_path):
                 save_manifest({"data/guide.txt": "hash"})
 
             self.assertEqual(

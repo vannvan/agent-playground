@@ -16,7 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agent import run_plain_chat_stream, run_chat_stream
+from app.chat.agent import run_plain_chat_stream, run_chat_stream
 
 logging.basicConfig(
     level=logging.INFO,
@@ -261,11 +261,11 @@ async def main() -> int:
     print()
 
     try:
-        from retriever import collection_count
+        from app.knowledge_base.retriever import collection_count
         count = collection_count()
         print(f"[前置] 知识库文档数: {count}")
         if count == 0:
-            print("[警告] 知识库为空！请先运行 ingest.py 导入文档\n")
+            print("[警告] 知识库为空！请先运行 python -m scripts.ingest 导入文档\n")
     except Exception as e:
         print(f"[警告] 无法连接知识库: {e}\n")
     print()

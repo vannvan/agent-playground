@@ -8,8 +8,10 @@ stream_mode="values" 首帧包含完整初始 state（含 history AIMessage）�
 修复：last_processed_count = len(msgs)，跳过所有初始消息。
 """
 import asyncio, json, sys, time, uuid
-sys.path.insert(0, ".")
-from agent import run_chat_stream
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from app.chat.agent import run_chat_stream
 
 KB_PROMPT = (
     "你是基于内部知识库回答的助手。\n"

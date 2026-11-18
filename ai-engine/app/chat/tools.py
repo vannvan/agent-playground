@@ -7,7 +7,7 @@ from typing import Any, Optional
 
 from langchain_core.tools import tool
 
-from retriever import retrieve
+from app.knowledge_base.retriever import retrieve
 
 logger = logging.getLogger(__name__)
 

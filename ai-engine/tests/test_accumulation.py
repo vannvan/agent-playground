@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from agent import run_chat_stream
+from app.chat.agent import run_chat_stream
 
 KB_PROMPT = (
     "你是基于内部知识库回答的助手。\n"
@@ -120,7 +120,7 @@ async def main() -> int:
     print("║     TC-A: 答案累加专项测试                               ║")
     print("╚══════════════════════════════════════════════════════════╝")
     try:
-        from retriever import collection_count
+        from app.knowledge_base.retriever import collection_count
         print(f"[前置] 知识库文档数: {collection_count()}")
     except Exception as e:
         print(f"[警告] 无法连接知识库: {e}")

@@ -56,14 +56,16 @@ export async function parseSseStream(
       else if (line.startsWith('data:')) dataLine = line.slice(5).trim()
     }
     if (!dataLine) return
+    let ev: SseEvent
     try {
-      const ev = JSON.parse(dataLine) as SseEvent
-      if (eventType !== 'data') ev.type = eventType as SseEvent['type']
-      else if (!ev.type) ev.type = ev.content !== undefined ? 'text' : 'done'
-      onEvent(ev)
+      ev = JSON.parse(dataLine) as SseEvent
     } catch {
       // 忽略非法 SSE 数据帧
+      return
     }
+    if (eventType !== 'data') ev.type = eventType as SseEvent['type']
+    else if (!ev.type) ev.type = ev.content !== undefined ? 'text' : 'done'
+    onEvent(ev)
   }
   try {
     while (true) {

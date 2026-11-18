@@ -156,17 +156,22 @@ export class KnowledgeBaseSkill extends SkillBase {
           // 正常数据事件
           const dataMatch = trimmed.match(/^data:\s*(.+)$/m);
           if (!dataMatch?.[1]) continue;
+          let event: { type?: string; content?: string; message?: string; [key: string]: unknown };
           try {
-            const event = JSON.parse(dataMatch[1]);
-            if (event.type === 'tool') {
-              yield `__TOOL_CALL__${JSON.stringify(event)}`;
-            } else if (event.type === 'sources') {
-              yield `__SOURCES__${JSON.stringify(event)}`;
-            } else if (event.type === 'text' && event.content) {
-              yield event.content;
-            }
+            event = JSON.parse(dataMatch[1]);
           } catch {
-            // 忽略非 JSON 片段
+            continue;
+          }
+          if (event.type === 'error') {
+            throw new ServiceUnavailableException(event.message ?? 'AI Engine 返回错误');
+          } else if (event.type === 'tool') {
+            yield `__TOOL_CALL__${JSON.stringify(event)}`;
+          } else if (event.type === 'tool_result') {
+            yield `__TOOL_RESULT__${JSON.stringify(event)}`;
+          } else if (event.type === 'sources') {
+            yield `__SOURCES__${JSON.stringify(event)}`;
+          } else if (event.type === 'text' && event.content) {
+            yield event.content;
           }
         }
       }

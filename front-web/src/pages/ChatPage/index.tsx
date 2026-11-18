@@ -55,6 +55,16 @@ const SKILL_GROUPS: SkillGroup[] = [
   },
 ]
 
+const CITATION_SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹'
+
+function formatCitationMarkers(text: string, sourceCount: number) {
+  return text.replace(/\[(\d+)\]/g, (marker, digits: string) => {
+    const number = Number(digits)
+    if (number < 1 || number > sourceCount) return marker
+    return ` ${String(number).replace(/\d/g, (digit) => CITATION_SUPERSCRIPTS[Number(digit)])}`
+  })
+}
+
 interface ChatPageProps {
   user: User | null
   activeChatId: string
@@ -116,6 +126,7 @@ export function ChatPage({
     const blocks: ChatBlock[] = []
     let pendingText = ''
     let citations: SourceCitation[] = []
+    let sourceCount = 0
 
     for (const ev of events) {
       switch (ev.type) {
@@ -131,6 +142,7 @@ export function ChatPage({
           break
         case 'sources':
           citations = ev.citations ?? []
+          sourceCount = ev.sources?.length ?? 0
           break
         case 'tool_result':
           for (let i = blocks.length - 1; i >= 0; i--) {
@@ -155,6 +167,14 @@ export function ChatPage({
     }
     if (pendingText) {
       blocks.push({ type: 'text', content: pendingText })
+    }
+    if (sourceCount > 0) {
+      for (let i = 0; i < blocks.length; i++) {
+        const block = blocks[i]
+        if (block.type === 'text') {
+          blocks[i] = { ...block, content: formatCitationMarkers(block.content, sourceCount) }
+        }
+      }
     }
     if (citations.length) {
       blocks.push({ type: 'citations', citations })
@@ -186,6 +206,8 @@ export function ChatPage({
       })
 
       const events: SseEvent[] = []
+      let blocks: ChatBlock[] = []
+      let hasSources = false
       await parseSseStream(reader, (ev) => {
         if (ev.type === 'error') {
           throw new Error(ev.message ?? '请求失败')
@@ -202,7 +224,26 @@ export function ChatPage({
           )
         }
         events.push(ev)
-        const blocks = buildBlocks(events)
+        if (ev.type === 'sources') hasSources = true
+        if (ev.type === 'text' && !hasSources) {
+          const contentBlocks = blocks.filter((block) => block.type !== 'citations')
+          const citationBlocks = blocks.filter(
+            (block): block is Extract<ChatBlock, { type: 'citations' }> => block.type === 'citations',
+          )
+          const text = ev.content ?? ''
+          const lastBlock = contentBlocks[contentBlocks.length - 1]
+          if (text && lastBlock?.type === 'text') {
+            contentBlocks[contentBlocks.length - 1] = {
+              ...lastBlock,
+              content: lastBlock.content + text,
+            }
+          } else if (text) {
+            contentBlocks.push({ type: 'text', content: text })
+          }
+          blocks = [...contentBlocks, ...citationBlocks]
+        } else {
+          blocks = buildBlocks(events)
+        }
         setMessages((current) => current.map((m, i) =>
           i === current.length - 1 ? { ...m, blocks } : m,
         ))

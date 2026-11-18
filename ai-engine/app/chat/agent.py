@@ -1,18 +1,26 @@
 """agent.py — LangGraph 编排（graph 编译、工具绑定、流式生成）"""
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
 from typing import Any, AsyncIterator
 
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import (
+    AIMessage,
+    HumanMessage,
+    SystemMessage,
+    ToolMessage,
+    message_chunk_to_message,
+)
 from langchain_openai import ChatOpenAI
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, StateGraph, START
 
-from config import get_settings
-from tools import get_tools
-from memory import create_session, add_message, get_messages
+from app.chat.tools import get_tools
+from app.core.config import get_settings
+from app.sessions.memory import add_message, create_session, get_messages
 
 logger = logging.getLogger(__name__)
 
@@ -46,8 +54,20 @@ class AgentState(dict):
 
 # ── 节点实现 ───────────────────────────────────────────────────────────────────
 
-def chat_node(state: AgentState) -> dict:
-    """调用 LLM，将历史 + 系统提示 + 工具一起传入。"""
+def _text_from_content(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            part.get("text", "")
+            for part in content
+            if isinstance(part, dict) and isinstance(part.get("text"), str)
+        )
+    return ""
+
+
+async def chat_node(state: AgentState, config: RunnableConfig) -> dict:
+    """流式调用 LLM，同时聚合完整消息供 LangGraph 判断工具调用。"""
     cfg = get_settings()
     llm_kwargs = {
         "model": cfg.ai_model,
@@ -79,7 +99,19 @@ def chat_node(state: AgentState) -> dict:
             msgs.insert(0, SystemMessage(content=tool_protocol.lstrip()))
 
     bound = llm.bind_tools(get_tools())
-    response = bound.invoke(msgs)
+    stream_queue = config.get("configurable", {}).get("stream_queue")
+    response_chunk = None
+    async for chunk in bound.astream(msgs):
+        text = _text_from_content(chunk.content)
+        if text and stream_queue is not None:
+            await stream_queue.put({"type": "text", "content": text})
+        response_chunk = chunk if response_chunk is None else response_chunk + chunk
+
+    response = (
+        message_chunk_to_message(response_chunk)
+        if response_chunk is not None
+        else AIMessage(content="")
+    )
     n_tc = len(response.tool_calls) if response.tool_calls else 0
     prev_tc = state.get("tool_call_count", 0)
     logger.info("LLM 响应：role=%s tool_calls=%s",
@@ -98,7 +130,7 @@ def chat_node(state: AgentState) -> dict:
 
 def tool_node(state: AgentState) -> dict:
     """执行工具调用，收集结果并追加到消息序列。"""
-    from tools import search_knowledge_base
+    from app.chat.tools import search_knowledge_base
 
     tool_map = {t.name: t for t in get_tools()}
     responses = []
@@ -264,7 +296,7 @@ async def run_chat_stream(
                 len(context_questions) if context_questions else None, bool(system_prompt))
 
     # 查询改写：追问补全为自包含查询（自包含或失败时返回原问题）
-    from query_rewriter import rewrite_query
+    from app.chat.query_rewriter import rewrite_query
     effective_query = await rewrite_query(user_message, context_questions)
     if effective_query != user_message:
         logger.info("查询已改写: %r → %r", user_message, effective_query)
@@ -314,78 +346,107 @@ async def run_chat_stream(
     msgs.append(HumanMessage(content=effective_query))
     state = AgentState(session_id=session_id, messages=msgs)
     config = _make_config()
+    stream_queue: asyncio.Queue = asyncio.Queue()
+    config["configurable"] = {
+        **config.get("configurable", {}),
+        "stream_queue": stream_queue,
+    }
 
-    all_sources = []
-    cited_sources = []
-    all_texts = []
-    no_relevant_result = False
-    no_relevant_tool_name = "search_knowledge_base"
-    prev_tool_call_ids = set()
-    prev_text_message_ids = set()
-    # 跳过历史消息（含 history / memory 加载的 AIMessage），只收集本轮新生成的内容。
-    # stream_mode="values" 首帧会返回完整初始 state，若从 0 开始处理，
-    # 历史 AIMessage 的 content 会被重复加入 all_texts，导致新旧答案拼接。
-    last_processed_count = len(msgs)
+    async def run_graph() -> None:
+        all_sources: list[dict] = []
+        cited_sources: list[dict] = []
+        all_texts: list[str] = []
+        no_relevant_result = False
+        no_relevant_tool_name = "search_knowledge_base"
+        prev_tool_call_ids = set()
+        prev_text_message_ids = set()
+        # Skip initial state messages, which include history rather than this turn's response.
+        last_processed_count = len(msgs)
+        try:
+            async for chunk in graph.astream(state, config=config, stream_mode="values"):
+                messages = chunk.get("messages", [])
+                if "sources" in chunk and chunk["sources"]:
+                    all_sources = chunk["sources"]
+
+                for msg in messages[last_processed_count:]:
+                    last_processed_count += 1
+                    if isinstance(msg, ToolMessage):
+                        try:
+                            payload = json.loads(msg.content)
+                            if payload.get("status") == "no_relevant_result":
+                                no_relevant_result = True
+                                await stream_queue.put({
+                                    "type": "tool_result",
+                                    "name": no_relevant_tool_name,
+                                    "status": "no_relevant_result",
+                                    "message": payload.get("message", "知识库中没有找到相关内容。"),
+                                })
+                        except (TypeError, json.JSONDecodeError):
+                            pass
+                    elif isinstance(msg, AIMessage):
+                        for tool_call in getattr(msg, "tool_calls", []) or []:
+                            tool_call_id = tool_call.get("id")
+                            if tool_call_id and tool_call_id not in prev_tool_call_ids:
+                                prev_tool_call_ids.add(tool_call_id)
+                                await stream_queue.put({
+                                    "type": "tool",
+                                    "name": tool_call["name"],
+                                    "args": json.dumps(tool_call["args"], ensure_ascii=False),
+                                })
+
+                        msg_id = getattr(msg, "id", None)
+                        if msg.content and msg_id not in prev_text_message_ids:
+                            if msg_id is not None:
+                                prev_text_message_ids.add(msg_id)
+                            all_texts.append(msg.content)
+
+            if no_relevant_result:
+                await stream_queue.put({
+                    "type": "text",
+                    "content": "知识库中没有找到与相关问题相关的信息。",
+                })
+            elif not all_texts and all_sources:
+                await stream_queue.put({
+                    "type": "text",
+                    "content": "根据知识库检索到的相关内容：" + "\n".join(
+                        source.get("content", "") for source in all_sources[:3]
+                    ),
+                })
+            elif all_texts:
+                raw_text = "".join(all_texts)
+                _, cited_sources = _format_citations(raw_text, all_sources)
+            else:
+                await stream_queue.put({
+                    "type": "text",
+                    "content": "知识库中没有找到与相关问题相关的信息。",
+                })
+
+            await stream_queue.put({
+                "type": "sources",
+                "sources": all_sources,
+                "citations": cited_sources,
+            })
+        except Exception as e:
+            logger.exception("流式对话异常")
+            await stream_queue.put({"type": "error", "message": str(e)})
+        finally:
+            await stream_queue.put({"type": "done", "session_id": session_id})
+            await stream_queue.put(None)
+
+    graph_task = asyncio.create_task(run_graph())
     try:
-        async for chunk in graph.astream(state, config=config, stream_mode="values"):
-            messages = chunk.get("messages", [])
-            
-            # 聚合 sources（取最新值）
-            if "sources" in chunk and chunk["sources"]:
-                all_sources = chunk["sources"]
-            
-            # 只处理本轮新增的消息，避免同一消息多次触发事件
-            for msg in messages[last_processed_count:]:
-                last_processed_count += 1
-                if isinstance(msg, ToolMessage):
-                    try:
-                        payload = json.loads(msg.content)
-                        if payload.get("status") == "no_relevant_result":
-                            no_relevant_result = True
-                            yield {"type": "tool_result", "name": no_relevant_tool_name, "status": "no_relevant_result", "message": payload.get("message", "知识库中没有找到相关内容。")}
-                    except (TypeError, json.JSONDecodeError):
-                        pass
-                elif isinstance(msg, AIMessage):
-                    # 工具调用事件（去重）
-                    tool_calls = getattr(msg, "tool_calls", []) or []
-                    for tc in tool_calls:
-                        tc_id = tc.get("id")
-                        if tc_id and tc_id not in prev_tool_call_ids:
-                            prev_tool_call_ids.add(tc_id)
-                            yield {"type": "tool", "name": tc["name"],
-                                   "args": json.dumps(tc["args"], ensure_ascii=False)}
-                    
-                    # 文本内容事件
-                    msg_id = getattr(msg, "id", None)
-                    if msg.content and msg_id not in prev_text_message_ids:
-                        if msg_id is not None:
-                            prev_text_message_ids.add(msg_id)
-                        all_texts.append(msg.content)
-
-        # 发送最终回复
-        # 优先级：no_relevant_result > 工具持续失败兜底 > LLM文本 > 空结果提示
-        if no_relevant_result:
-            yield {"type": "text", "content": "知识库中没有找到与相关问题相关的信息。"}
-        elif not all_texts and all_sources:
-            # 检索到了内容但 LLM 未能生成文本（工具链异常），用已知片段作答
-            yield {"type": "text", "content": "根据知识库检索到的相关内容：" + "\n".join(s.get("content","") for s in all_sources[:3])}
-        elif all_texts:
-            raw_text = "".join(all_texts)
-            formatted_text, cited_sources = _format_citations(raw_text, all_sources)
-            yield {"type": "text", "content": formatted_text}
-        else:
-            yield {"type": "text", "content": "知识库中没有找到与相关问题相关的信息。"}
-        
-        # 发送 sources
-        yield {"type": "sources", "sources": all_sources, "citations": cited_sources}
-        yield {"type": "done", "session_id": session_id}
-
-    except Exception as e:
-        logger.exception("流式对话异常")
-        yield {"type": "error", "message": str(e)}
-        yield {"type": "done", "session_id": session_id}
-
+        while True:
+            event = await stream_queue.get()
+            if event is None:
+                break
+            yield event
     finally:
+        if not graph_task.done():
+            graph_task.cancel()
+        try:
+            await graph_task
+        except asyncio.CancelledError:
+            pass
         add_message(session_id, "user", user_message)
         elapsed = time.time() - start_ts
         logger.info("会话 %s 对话完成，耗时 %.2fs", session_id, elapsed)
@@ -403,9 +464,9 @@ async def run_chat_sync_async(session_id: str, user_message: str) -> dict[str, A
         if ev["type"] == "sources":
             sources_list = ev.get("sources", [])
         elif ev["type"] == "text" and ev.get("content"):
-            final_reply = ev["content"]
+            final_reply += ev["content"]
 
-    final_reply = final_reply.strip()
+    final_reply, _ = _format_citations(final_reply.strip(), sources_list)
     add_message(session_id, "assistant", final_reply)
 
     return {
@@ -449,7 +510,6 @@ async def run_plain_chat_stream(
     session_id：必填，Python 侧用于维护会话上下文。
     history：可选，[{role, content}] 形式的前置对话；缺省取 Python 内存历史。
     """
-    from config import get_settings
     from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
     cfg = get_settings()

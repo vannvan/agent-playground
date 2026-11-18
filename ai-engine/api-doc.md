@@ -328,8 +328,8 @@ data: {"type":"error","message":"<错误信息>"}    ← 异常时触发
 pip3 install -r requirements.txt
 
 # 启动服务（开发模式）
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 # 启动服务（生产模式）
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```

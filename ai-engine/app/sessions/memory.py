@@ -9,6 +9,8 @@ from typing import Optional, Any
 
 import threading
 
+from app.core.config import get_settings
+
 logger = logging.getLogger(__name__)
 
 # 每条消息格式：{"role": "user"|"assistant"|"system", "content": str, "ts": datetime}
@@ -73,7 +75,7 @@ def get_session_history(session_id: str) -> list[dict[str, Any]]:
 
 
 def prune_expired_sessions(ttl: Optional[int] = None) -> int:
-    cfg = __import__("config", fromlist=["get_settings"]).get_settings()
+    cfg = get_settings()
     ttl = ttl or cfg.session_ttl
     before = len(_sessions)
     _cleanup_expired(ttl)
